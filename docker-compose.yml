@@ -1,0 +1,79 @@
+# ThinkLab local stack: MongoDB + the five services, each built from its sibling repository.
+#   docker compose up --build
+# Host ports follow the platform port map; inside the containers every service listens on 8080.
+name: thinklab
+
+x-service: &service
+  restart: unless-stopped
+  depends_on:
+    mongo:
+      condition: service_healthy
+  environment: &service-env
+    HASH_SERVICE_URL: http://hash-token-registry:8080
+
+services:
+  mongo:
+    image: mongo:8.0
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  hash-token-registry:
+    <<: *service
+    build: ../micronaut-hash-token-registry-service
+    ports: ["8080:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_hash_db
+
+  party-reference-data-directory:
+    <<: *service
+    build: ../micronaut-party-reference-data-directory-service
+    ports: ["8081:8080"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      hash-token-registry: { condition: service_started }
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_company_db
+
+  party-authentication:
+    <<: *service
+    build: ../micronaut-party-authentication-service
+    ports: ["8082:8080"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      hash-token-registry: { condition: service_started }
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_party_authentication_db
+
+  it-asset-registry:
+    <<: *service
+    build: ../micronaut-it-asset-registry-service
+    ports: ["8083:8080"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      hash-token-registry: { condition: service_started }
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_asset_db
+
+  it-operation-window:
+    <<: *service
+    build: ../micronaut-it-operation-window-service
+    ports: ["8084:8080"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      hash-token-registry: { condition: service_started }
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_operation_db
+
+volumes:
+  mongo-data:
