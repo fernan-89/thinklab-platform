@@ -1,0 +1,33 @@
+ThinkLab - Proprietary Software License
+
+Copyright (c) 2026 fernan-89. All rights reserved.
+
+This software, its source code, documentation, API contracts, test suites and
+all associated materials (the "Software") are the proprietary and confidential
+property of the copyright holder. The Software is NOT open source.
+
+No licence, express or implied, is granted to any person. Without prior
+written permission of the copyright holder you may NOT:
+
+  1. use, run or deploy the Software, in whole or in part;
+  2. copy, reproduce, modify, adapt, translate or create derivative works;
+  3. distribute, sublicense, sell, lease, lend, host or otherwise make the
+     Software available to any third party, including as a network service;
+  4. reverse engineer, decompile or disassemble the Software, except to the
+     extent applicable law expressly forbids this restriction;
+  5. remove or alter any copyright, confidentiality or licence notice;
+  6. use the Software, its code or its documentation to train, fine-tune or
+     evaluate machine-learning models, or to build a competing product.
+
+Making the Software visible on a hosting platform (for example a public
+repository) does not grant any of the rights above. Any rights that the
+hosting platform's terms of service grant to other users of that platform are
+limited to what those terms strictly require.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+COPYRIGHT HOLDER BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR ITS USE.
+
+Licence enquiries: fernan.andre@outlook.com

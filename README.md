@@ -48,3 +48,7 @@ JUnit XML and the console output of each suite land in `.e2e/reports/`.
 * Every service: `./gradlew check` (tests + JaCoCo floor, 60% line / 40% branch) — see each repo's CI.
 * Workspace: `scripts/audit-compliance.ps1` (naming, docs, ADRs, Postman, formatting, git hygiene).
 * Platform: the E2E suites above; they found real defects the unit tests could not (see `docs/e2e-findings.md`).
+
+## License
+
+Proprietary - all rights reserved. See [LICENSE](LICENSE). This software is not open source.
