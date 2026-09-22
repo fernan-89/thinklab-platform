@@ -28,6 +28,7 @@ foreach ($s in $Services) {
     $env:MICRONAUT_SERVER_PORT = "$($s.Port)"
     $env:MONGODB_URI           = "mongodb://localhost:27017/$($s.Db)"
     $env:HASH_SERVICE_URL      = 'http://localhost:8080'
+    if (-not $env:THINKLAB_JWT_SECRET) { $env:THINKLAB_JWT_SECRET = 'local-dev-only-secret-local-dev-only-secret' }  # dev default; login needs a signing key even with the filter off
     Write-Host "Starting $($s.Name) on :$($s.Port)..."
     $p = Start-Process $java -ArgumentList '-cp', "`"$lib`"", 'com.thinklab.Application' `
         -RedirectStandardOutput "$RunDir\$($s.Name).log" -RedirectStandardError "$RunDir\$($s.Name).err" -WindowStyle Hidden -PassThru
