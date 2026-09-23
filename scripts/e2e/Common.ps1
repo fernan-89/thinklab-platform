@@ -10,7 +10,10 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-party-reference-data-directory-service'; Port = 8081; Db = 'thinklab_company_db' },
     [pscustomobject]@{ Name = 'micronaut-party-authentication-service';           Port = 8082; Db = 'thinklab_party_authentication_db' },
     [pscustomobject]@{ Name = 'micronaut-it-asset-registry-service';              Port = 8083; Db = 'thinklab_asset_db' },
-    [pscustomobject]@{ Name = 'micronaut-it-operation-window-service';            Port = 8084; Db = 'thinklab_operation_db' }
+    [pscustomobject]@{ Name = 'micronaut-it-operation-window-service';            Port = 8084; Db = 'thinklab_operation_db' },
+    # No MongoDB of its own (stateless proxy); listed last so its own readiness (which depends on
+    # party-authentication's liveness via warmup.endpoints) has something to actually wait on.
+    [pscustomobject]@{ Name = 'micronaut-platform-gateway-service';                Port = 8088; Db = $null }
 )
 
 function Get-Java21 {

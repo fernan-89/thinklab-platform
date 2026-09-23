@@ -26,9 +26,11 @@ foreach ($s in $Services) {
     if ($Build) { Push-Location $dir; & .\gradlew.bat installDist --console=plain -q; Pop-Location }
     $lib = Join-Path $dir "build\install\$($s.Name)\lib\*"
     $env:MICRONAUT_SERVER_PORT = "$($s.Port)"
-    $env:MONGODB_URI           = "mongodb://localhost:27017/$($s.Db)"
+    if ($s.Db) { $env:MONGODB_URI = "mongodb://localhost:27017/$($s.Db)" } else { Remove-Item Env:\MONGODB_URI -ErrorAction SilentlyContinue }
     $env:HASH_SERVICE_URL      = 'http://localhost:8080'
-    if (-not $env:THINKLAB_JWT_SECRET) { $env:THINKLAB_JWT_SECRET = 'local-dev-only-secret-local-dev-only-secret' }  # dev default; login needs a signing key even with the filter off
+    # Security (THINKLAB_SECURITY_ENABLED / THINKLAB_JWT_PRIVATE_KEY / THINKLAB_BOOTSTRAP_SECRET / THINKLAB_CLIENT_SECRET)
+    # is left to the caller: every service works with it unset (party-authentication then signs with an
+    # ephemeral key, valid only for this run). See secured-smoke.ps1 for a secured run.
     Write-Host "Starting $($s.Name) on :$($s.Port)..."
     $p = Start-Process $java -ArgumentList '-cp', "`"$lib`"", 'com.thinklab.Application' `
         -RedirectStandardOutput "$RunDir\$($s.Name).log" -RedirectStandardError "$RunDir\$($s.Name).err" -WindowStyle Hidden -PassThru
