@@ -1,15 +1,16 @@
 <#
 .SYNOPSIS
-  Starts MongoDB (portable) and the five ThinkLab services locally, without Docker.
+  Starts MongoDB, NATS JetStream (both portable) and every ThinkLab service locally, without Docker.
 .DESCRIPTION
   Expects `gradlew installDist` to have been run in every service (use -Build to do it here) and the
-  portable MongoDB under <workspace>\tools\mongodb. Logs and PIDs go to thinklab-platform\.e2e.
+  portable MongoDB under <workspace>\tools\mongodb and NATS under <workspace>\tools\nats. Logs and PIDs
+  go to thinklab-platform\.e2e.
 #>
 param([switch]$Build)
 
 . (Join-Path $PSScriptRoot 'Common.ps1')
 $ErrorActionPreference = 'Stop'
-New-Item -ItemType Directory -Force $RunDir, "$Tools\data\db" | Out-Null
+New-Item -ItemType Directory -Force $RunDir, "$Tools\data\db", "$Tools\data\nats" | Out-Null
 $java = Get-Java21
 $pids = @{}
 
@@ -19,6 +20,16 @@ if (-not (Get-Process mongod -ErrorAction SilentlyContinue)) {
         -RedirectStandardOutput "$RunDir\mongod.out" -RedirectStandardError "$RunDir\mongod.err" -WindowStyle Hidden -PassThru
     $pids['mongod'] = $m.Id
     Start-Sleep -Seconds 4
+}
+
+# Started unconditionally, like mongod: cheap, and harmless when no service has THINKLAB_EVENTS_ENABLED
+# set (the kit's NATS beans stay dormant behind @Requires). See events-smoke.ps1 for a run that uses it.
+if (-not (Get-Process nats-server -ErrorAction SilentlyContinue)) {
+    Write-Host 'Starting NATS JetStream...'
+    $n = Start-Process "$Tools\nats\nats-server.exe" -ArgumentList '-js', '-p', '4222', '-sd', "$Tools\data\nats" `
+        -RedirectStandardOutput "$RunDir\nats.out" -RedirectStandardError "$RunDir\nats.err" -WindowStyle Hidden -PassThru
+    $pids['nats-server'] = $n.Id
+    Start-Sleep -Seconds 2
 }
 
 foreach ($s in $Services) {

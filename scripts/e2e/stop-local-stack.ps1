@@ -20,4 +20,9 @@ foreach ($s in $Services) {
     Get-NetTCPConnection -LocalPort $s.Port -State Listen -ErrorAction SilentlyContinue |
         ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
 }
+# NATS is always stopped (unlike mongod, it isn't gated behind -IncludeMongo) - cheap to restart, and a
+# leftover broker between runs is more confusing than a leftover database.
+Get-NetTCPConnection -LocalPort 4222 -State Listen -ErrorAction SilentlyContinue |
+    ForEach-Object { Stop-Process -Id $_.OwningProcess -Force -ErrorAction SilentlyContinue }
+Get-Process nats-server -ErrorAction SilentlyContinue | Stop-Process -Force
 if ($IncludeMongo) { Get-Process mongod -ErrorAction SilentlyContinue | Stop-Process -Force }
