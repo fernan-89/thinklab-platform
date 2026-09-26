@@ -5,10 +5,15 @@
 
 .DESCRIPTION
   Every credential here is real: nothing is hand-crafted. Start the stack with a bootstrap client secret
-  registered on party-authentication, then run this script with the same secret:
+  registered on party-authentication, then run this script with the same secret. THINKLAB_CLIENT_SECRET is
+  not optional here (found live): IssueServiceTokenUseCase treats a blank service-client secret the same as
+  a wrong one - always a 401 - so party-reference-data-directory/it-asset-registry/it-operation-window
+  cannot get their own service-to-service token from party-authentication without it, and every step past
+  organisation creation fails.
 
     $env:THINKLAB_SECURITY_ENABLED  = 'true'
     $env:THINKLAB_BOOTSTRAP_SECRET  = 'a-long-bootstrap-secret-for-this-run'
+    $env:THINKLAB_CLIENT_SECRET     = 'a-long-client-secret-for-this-run'
     $env:GATEWAY_RATE_LIMIT_BURST   = '5'   # optional: makes the rate-limit check in step 8 deterministic
     .\start-local-stack.ps1 -Build
 
