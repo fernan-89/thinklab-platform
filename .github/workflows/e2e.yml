@@ -1,0 +1,89 @@
+name: e2e
+
+# The whole platform, end to end: every service built from its repository's master, started with
+# docker-compose.yml (MongoDB replica set, NATS JetStream, seven services), then exercised with each
+# service's Postman suite, the event-backbone smoke and the gateway smoke.
+on:
+  push:
+    branches: [master]
+  pull_request:
+  workflow_dispatch:
+  # Nightly, so a change merged in any service repository is caught here within a day.
+  schedule:
+    - cron: '17 4 * * *'
+
+# packages: read resolves thinklab-service-kit from GitHub Packages with the workflow token.
+permissions:
+  contents: read
+  packages: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      # The scripts expect the service repositories as siblings of thinklab-platform.
+      - uses: actions/checkout@v7
+        with: { path: thinklab-platform }
+      - uses: actions/checkout@v7
+        with: { repository: fernan-89/micronaut-hash-token-registry-service, path: micronaut-hash-token-registry-service }
+      - uses: actions/checkout@v7
+        with: { repository: fernan-89/micronaut-party-reference-data-directory-service, path: micronaut-party-reference-data-directory-service }
+      - uses: actions/checkout@v7
+        with: { repository: fernan-89/micronaut-party-authentication-service, path: micronaut-party-authentication-service }
+      - uses: actions/checkout@v7
+        with: { repository: fernan-89/micronaut-it-asset-registry-service, path: micronaut-it-asset-registry-service }
+      - uses: actions/checkout@v7
+        with: { repository: fernan-89/micronaut-it-operation-window-service, path: micronaut-it-operation-window-service }
+      - uses: actions/checkout@v7
+        with: { repository: fernan-89/micronaut-platform-gateway-service, path: micronaut-platform-gateway-service }
+      - uses: actions/checkout@v7
+        with: { repository: fernan-89/micronaut-notification-dispatch-service, path: micronaut-notification-dispatch-service }
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v6
+
+      - name: Build every service (installDist)
+        env:
+          GITHUB_ACTOR: ${{ github.actor }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: thinklab-platform/scripts/stack/build.sh
+
+      - name: Start the stack
+        working-directory: thinklab-platform
+        run: docker compose up -d --build
+
+      - name: Wait until every service is ready
+        run: thinklab-platform/scripts/stack/wait-ready.sh 240
+
+      - name: Install newman
+        run: npm install -g newman
+
+      - name: Postman suites
+        run: thinklab-platform/scripts/e2e/run-e2e.sh
+
+      - name: Event backbone smoke (user.initiated -> welcome notification)
+        run: thinklab-platform/scripts/e2e/events-smoke.sh
+
+      - name: Gateway smoke
+        run: thinklab-platform/scripts/e2e/gateway-smoke.sh
+
+      - name: Service logs
+        if: failure()
+        working-directory: thinklab-platform
+        run: mkdir -p .e2e && docker compose logs --no-color > .e2e/compose.log 2>&1 || true
+
+      - name: Upload reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: e2e-reports
+          path: thinklab-platform/.e2e/
+          if-no-files-found: ignore
