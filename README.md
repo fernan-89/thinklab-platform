@@ -51,4 +51,4 @@ JUnit XML and the console output of each suite land in `.e2e/reports/`.
 
 ## License
 
-Proprietary - all rights reserved. See [LICENSE](LICENSE). This software is not open source.
+Licensed under the [PolyForm Strict License 1.0.0](LICENSE): you may read and use this software for noncommercial purposes only. Modifying it, creating derivative works, redistributing it and any commercial use are not permitted without a separate written license. This software is not open source.
