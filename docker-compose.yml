@@ -1,6 +1,12 @@
-# ThinkLab local stack: MongoDB + the five services, each built from its sibling repository.
-#   docker compose up --build
-# Host ports follow the platform port map; inside the containers every service listens on 8080.
+# ThinkLab local stack: MongoDB (single-node replica set), NATS JetStream and the seven services.
+#
+#   scripts/stack/build.sh        # or scripts\stack\build.ps1: gradlew installDist in every sibling repo
+#   docker compose up -d --build
+#   scripts/stack/wait-ready.sh   # until every service reports /health/readiness UP
+#
+# Each image packages its service's build/install output (see the Dockerfile in every repo), so nothing
+# is compiled inside Docker and no GitHub Packages credential ever reaches an image.
+# Host ports follow the platform port map; inside the network every service listens on 8080.
 name: thinklab
 
 x-service: &service
@@ -10,70 +16,130 @@ x-service: &service
       condition: service_healthy
   environment: &service-env
     HASH_SERVICE_URL: http://hash-token-registry:8080
+    THINKLAB_JWKS_URL: http://party-authentication:8080/party-authentication/v1/.well-known/jwks.json
+    THINKLAB_REVOCATION_URL: http://party-authentication:8080/party-authentication/v1/session/revoked
+    THINKLAB_TOKEN_URL: http://party-authentication:8080/party-authentication/v1/token/service
 
 services:
+  # A replica set, even with a single node, is what enables multi-document transactions; without it the
+  # kit's transactional outbox (party-authentication user creation) fails. The healthcheck initiates the
+  # set on first start and only reports healthy once this node is the writable primary.
   mongo:
     image: mongo:8.0
     restart: unless-stopped
+    command: ["mongod", "--replSet", "thinklab-rs0", "--bind_ip_all"]
+    ports: ["27017:27017"]
     volumes:
       - mongo-data:/data/db
     healthcheck:
-      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
-      interval: 5s
+      test:
+        - CMD
+        - mongosh
+        - --quiet
+        - --eval
+        - >-
+          try { rs.status() } catch (e) { rs.initiate({ _id: 'thinklab-rs0', members: [{ _id: 0, host: 'mongo:27017' }] }) };
+          quit(db.hello().isWritablePrimary ? 0 : 1)
+      interval: 3s
+      timeout: 10s
+      retries: 40
+
+  nats:
+    image: nats:2.10-alpine
+    restart: unless-stopped
+    command: ["-js", "-sd", "/data", "-m", "8222"]
+    ports: ["4222:4222"]
+    volumes:
+      - nats-data:/data
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8222/healthz"]
+      interval: 3s
       timeout: 5s
       retries: 20
 
   hash-token-registry:
     <<: *service
     build: ../micronaut-hash-token-registry-service
+    image: thinklab/hash-token-registry:local
     ports: ["8080:8080"]
     environment:
       <<: *service-env
-      MONGODB_URI: mongodb://mongo:27017/thinklab_hash_db
+      MONGODB_URI: mongodb://mongo:27017/thinklab_hash_db?replicaSet=thinklab-rs0
 
   party-reference-data-directory:
     <<: *service
     build: ../micronaut-party-reference-data-directory-service
+    image: thinklab/party-reference-data-directory:local
     ports: ["8081:8080"]
-    depends_on:
-      mongo: { condition: service_healthy }
-      hash-token-registry: { condition: service_started }
     environment:
       <<: *service-env
-      MONGODB_URI: mongodb://mongo:27017/thinklab_company_db
+      MONGODB_URI: mongodb://mongo:27017/thinklab_company_db?replicaSet=thinklab-rs0
 
+  # Events on: user creation writes the user and its user.initiated event in one transaction (outbox),
+  # and the relay publishes it to JetStream. Only this service and notification-dispatch carry the NATS
+  # client; enabling events anywhere else fails at startup.
   party-authentication:
     <<: *service
     build: ../micronaut-party-authentication-service
+    image: thinklab/party-authentication:local
     ports: ["8082:8080"]
     depends_on:
       mongo: { condition: service_healthy }
-      hash-token-registry: { condition: service_started }
+      nats: { condition: service_healthy }
     environment:
       <<: *service-env
-      MONGODB_URI: mongodb://mongo:27017/thinklab_party_authentication_db
+      MONGODB_URI: mongodb://mongo:27017/thinklab_party_authentication_db?replicaSet=thinklab-rs0
+      THINKLAB_EVENTS_ENABLED: "true"
+      THINKLAB_EVENTS_NATS_URL: nats://nats:4222
 
   it-asset-registry:
     <<: *service
     build: ../micronaut-it-asset-registry-service
+    image: thinklab/it-asset-registry:local
     ports: ["8083:8080"]
-    depends_on:
-      mongo: { condition: service_healthy }
-      hash-token-registry: { condition: service_started }
     environment:
       <<: *service-env
-      MONGODB_URI: mongodb://mongo:27017/thinklab_asset_db
+      MONGODB_URI: mongodb://mongo:27017/thinklab_asset_db?replicaSet=thinklab-rs0
 
   it-operation-window:
     <<: *service
     build: ../micronaut-it-operation-window-service
+    image: thinklab/it-operation-window:local
     ports: ["8084:8080"]
-    depends_on:
-      mongo: { condition: service_healthy }
-      hash-token-registry: { condition: service_started }
     environment:
       <<: *service-env
-      MONGODB_URI: mongodb://mongo:27017/thinklab_operation_db
+      MONGODB_URI: mongodb://mongo:27017/thinklab_operation_db?replicaSet=thinklab-rs0
+
+  # Stateless proxy: no database. Its readiness probes party-authentication's liveness.
+  gateway:
+    build: ../micronaut-platform-gateway-service
+    image: thinklab/platform-gateway:local
+    restart: unless-stopped
+    ports: ["8088:8080"]
+    environment:
+      THINKLAB_JWKS_URL: http://party-authentication:8080/party-authentication/v1/.well-known/jwks.json
+      THINKLAB_REVOCATION_URL: http://party-authentication:8080/party-authentication/v1/session/revoked
+      GATEWAY_PARTY_AUTHENTICATION_URL: http://party-authentication:8080
+      GATEWAY_PARTY_REFERENCE_URL: http://party-reference-data-directory:8080
+      GATEWAY_IT_ASSET_URL: http://it-asset-registry:8080
+      GATEWAY_IT_OPERATION_WINDOW_URL: http://it-operation-window:8080
+      GATEWAY_NOTIFICATION_DISPATCH_URL: http://notification-dispatch:8080
+
+  # Consumes party-authentication's user.initiated events and sends the welcome notification.
+  notification-dispatch:
+    <<: *service
+    build: ../micronaut-notification-dispatch-service
+    image: thinklab/notification-dispatch:local
+    ports: ["8089:8080"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      nats: { condition: service_healthy }
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_notification_db?replicaSet=thinklab-rs0
+      THINKLAB_EVENTS_ENABLED: "true"
+      THINKLAB_EVENTS_NATS_URL: nats://nats:4222
 
 volumes:
   mongo-data:
+  nats-data:

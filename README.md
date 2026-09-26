@@ -13,41 +13,71 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | party-authentication | 8082 | `micronaut-party-authentication-service` |
 | it-asset-registry | 8083 | `micronaut-it-asset-registry-service` |
 | it-operation-window | 8084 | `micronaut-it-operation-window-service` |
+| platform-gateway | 8088 | `micronaut-platform-gateway-service` |
+| notification-dispatch | 8089 | `micronaut-notification-dispatch-service` |
 
-Every service depends on MongoDB and on the Hash Token Registry (sovereign identity). The four
-consumers probe the registry's `/health/liveness` as part of their readiness.
+Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
+transactional outbox in party-authentication needs) and NATS JetStream (the event backbone:
+party-authentication publishes `user.initiated`, notification-dispatch consumes it). Every service
+except the gateway has its own database; the gateway is a stateless proxy in front of the other five
+APIs.
 
 ## Run the stack
+
+All scripts expect the service repositories cloned as siblings of this one (`../micronaut-*-service`).
 
 ### With Docker
 
 ```bash
-docker compose up --build
+scripts/stack/build.sh           # gradlew installDist in every service (Windows: scripts\stack\build.ps1)
+docker compose up -d --build
+scripts/stack/wait-ready.sh      # waits for /health/readiness on every service
 ```
 
-Expects the service repositories as siblings of this one (`../micronaut-*-service`).
+The images package each service's `installDist` output, so nothing is compiled inside Docker and no
+credential reaches an image. The build needs `thinklab-service-kit` from GitHub Packages: export
+`GITHUB_ACTOR` and `GITHUB_TOKEN` (a token with `read:packages`), or publish the kit to your local
+Maven repository first (`./gradlew publishToMavenLocal` in `thinklab-service-kit`).
 
-### Without Docker (portable tools)
+`docker compose down -v` stops everything and drops the data volumes.
 
-`scripts/e2e` runs the same stack with a portable MongoDB and the services' `installDist` output,
-and needs no installation or admin rights. Place the portable tools under `<workspace>/tools`:
-`mongodb/` (MongoDB Community zip), `node/` (Node.js zip) and `newman/` (`npm install newman`).
+### Without Docker (portable tools, Windows)
+
+`scripts/e2e` runs the same stack with portable MongoDB and NATS binaries and the services'
+`installDist` output, with no installation or admin rights. Place the tools under `<workspace>/tools`:
+`mongodb/`, `mongosh/`, `nats/`, `node/` and `newman/` (`npm install newman`).
 
 ```powershell
-powershell -File scripts\e2e\start-local-stack.ps1 -Build   # builds every service, starts Mongo + 5 services
-powershell -File scripts\e2e\run-e2e.ps1                    # runs the five Postman suites with newman
+powershell -File scripts\e2e\start-local-stack.ps1 -Build   # builds every service, starts Mongo, NATS and the services
+powershell -File scripts\e2e\run-e2e.ps1                    # runs the Postman suites with newman
 powershell -File scripts\e2e\stop-local-stack.ps1           # -IncludeMongo to stop MongoDB too
 ```
 
-The E2E runner executes the suites in dependency order and threads the `organisationId` created by
-the Party Reference Data Directory suite into the others (they scope every call to that tenant).
-JUnit XML and the console output of each suite land in `.e2e/reports/`.
+## End-to-end tests
+
+With the stack up (either way):
+
+| Script | What it checks |
+|---|---|
+| `scripts/e2e/run-e2e.sh` (`run-e2e.ps1`) | every service's Postman suite (`docs/postman` in each repo), in dependency order, threading the `organisationId` created by the Party Reference Data Directory suite into the others |
+| `scripts/e2e/events-smoke.sh` (`events-smoke.ps1`) | creating a user publishes `user.initiated` through the outbox and NATS, and notification-dispatch delivers the welcome notification |
+| `scripts/e2e/gateway-smoke.sh` | the gateway routes to each of the five upstream APIs |
+| `scripts/e2e/secured-smoke.ps1` | the security stack (tokens, JWKS, revocation) with `THINKLAB_SECURITY_ENABLED=true` |
+
+The bash runners need `newman` on the `PATH` (`npm install -g newman`). Reports (JUnit XML and the
+exported Postman environments) land in `.e2e/reports/`.
+
+The [`e2e` workflow](.github/workflows/e2e.yml) does all of this on GitHub Actions: it checks out
+every service's `master`, builds and starts the compose stack and runs the three bash checks, on every
+push and pull request here, nightly, and on demand.
 
 ## Quality gates
 
-* Every service: `./gradlew check` (tests + JaCoCo floor, 60% line / 40% branch) — see each repo's CI.
-* Workspace: `scripts/audit-compliance.ps1` (naming, docs, ADRs, Postman, formatting, git hygiene).
-* Platform: the E2E suites above; they found real defects the unit tests could not (see `docs/e2e-findings.md`).
+* Every service and the kit: `./gradlew check` in CI, which runs the unit tests with a 100% line and
+  branch coverage gate (JaCoCo) and a separate integration suite against real MongoDB and NATS
+  containers (Testcontainers). The CI also builds the container image.
+* Platform: the `e2e` workflow above. The E2E runs found real defects the unit tests could not (see
+  `docs/e2e-findings.md`).
 
 ## License
 
