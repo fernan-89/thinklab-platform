@@ -110,6 +110,15 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_operation_db?replicaSet=thinklab-rs0
 
+  site-reference-data-directory:
+    <<: *service
+    build: ../micronaut-site-reference-data-directory-service
+    image: thinklab/site-reference-data-directory:local
+    ports: ["8087:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_site_db?replicaSet=thinklab-rs0
+
   # Stateless proxy: no database. Its readiness probes party-authentication's liveness.
   gateway:
     build: ../micronaut-platform-gateway-service
@@ -123,6 +132,7 @@ services:
       GATEWAY_PARTY_REFERENCE_URL: http://party-reference-data-directory:8080
       GATEWAY_IT_ASSET_URL: http://it-asset-registry:8080
       GATEWAY_IT_OPERATION_WINDOW_URL: http://it-operation-window:8080
+      GATEWAY_SITE_REFERENCE_URL: http://site-reference-data-directory:8080
       GATEWAY_NOTIFICATION_DISPATCH_URL: http://notification-dispatch:8080
 
   # Consumes party-authentication's user.initiated events and sends the welcome notification.

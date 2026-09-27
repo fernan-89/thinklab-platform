@@ -7,6 +7,7 @@ THINKLAB_SERVICES=(
   "micronaut-party-authentication-service|party-authentication|8082"
   "micronaut-it-asset-registry-service|it-asset-registry|8083"
   "micronaut-it-operation-window-service|it-operation-window|8084"
+  "micronaut-site-reference-data-directory-service|site-reference-data-directory|8087"
   "micronaut-platform-gateway-service|gateway|8088"
   "micronaut-notification-dispatch-service|notification-dispatch|8089"
 )

@@ -10,6 +10,9 @@ $script:MongoReplSetName = 'thinklab-rs0'
 $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-hash-token-registry-service';            Port = 8080; Db = 'thinklab_hash_db' },
     [pscustomobject]@{ Name = 'micronaut-party-reference-data-directory-service'; Port = 8081; Db = 'thinklab_company_db' },
+    # Every Site is scoped to an Organisation (X-Tenant-Id), so it comes right after the service that
+    # produces organisationId - no other ordering dependency (no events, no cross-service warmup).
+    [pscustomobject]@{ Name = 'micronaut-site-reference-data-directory-service';    Port = 8087; Db = 'thinklab_site_db' },
     # Events = $true: the only two services with io.nats:jnats on their runtime classpath and the
     # thinklab.events.* config block (kit ADR-003). THINKLAB_EVENTS_ENABLED must not leak to any other
     # service - one that has the property but not the jnats jar fails at startup with
