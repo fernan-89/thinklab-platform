@@ -13,13 +13,19 @@ $script:Services = @(
     # Every Site is scoped to an Organisation (X-Tenant-Id), so it comes right after the service that
     # produces organisationId - no other ordering dependency (no events, no cross-service warmup).
     [pscustomobject]@{ Name = 'micronaut-site-reference-data-directory-service';    Port = 8087; Db = 'thinklab_site_db' },
-    # Events = $true: the only two services with io.nats:jnats on their runtime classpath and the
-    # thinklab.events.* config block (kit ADR-003). THINKLAB_EVENTS_ENABLED must not leak to any other
-    # service - one that has the property but not the jnats jar fails at startup with
-    # NoSuchBeanException on EventPublisher (found live: the gateway crashed its OutboxRelay this way).
+    # Events = $true: services with io.nats:jnats on their runtime classpath and the thinklab.events.*
+    # config block (kit ADR-003). THINKLAB_EVENTS_ENABLED must not leak to any other service - one that
+    # has the property but not the jnats jar fails at startup with NoSuchBeanException on EventPublisher
+    # (found live: the gateway crashed its OutboxRelay this way).
     [pscustomobject]@{ Name = 'micronaut-party-authentication-service';           Port = 8082; Db = 'thinklab_party_authentication_db'; Events = $true },
-    [pscustomobject]@{ Name = 'micronaut-it-asset-registry-service';              Port = 8083; Db = 'thinklab_asset_db' },
+    # Consumes it-hardware-maintenance's repair-started/repair-completed events (that service's own
+    # ADR-034) to drive Asset MAINTENANCE status - Events = $true even though this service is listed
+    # before the one that produces those events; NATS delivery is independent of HTTP startup order.
+    [pscustomobject]@{ Name = 'micronaut-it-asset-registry-service';              Port = 8083; Db = 'thinklab_asset_db'; Events = $true },
     [pscustomobject]@{ Name = 'micronaut-it-operation-window-service';            Port = 8084; Db = 'thinklab_operation_db' },
+    # Publishes repair-started/repair-completed (ADR-034); the asset it references is created by
+    # whichever suite runs before it, not a startup-order dependency of this service itself.
+    [pscustomobject]@{ Name = 'micronaut-it-hardware-maintenance-service';        Port = 8085; Db = 'thinklab_hardware_maintenance_db'; Events = $true },
     # No MongoDB of its own (stateless proxy); listed last so its own readiness (which depends on
     # party-authentication's liveness via warmup.endpoints) has something to actually wait on.
     [pscustomobject]@{ Name = 'micronaut-platform-gateway-service';                Port = 8088; Db = $null },

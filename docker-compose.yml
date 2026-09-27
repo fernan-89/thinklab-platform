@@ -1,4 +1,4 @@
-# ThinkLab local stack: MongoDB (single-node replica set), NATS JetStream and the seven services.
+# ThinkLab local stack: MongoDB (single-node replica set), NATS JetStream and the nine services.
 #
 #   scripts/stack/build.sh        # or scripts\stack\build.ps1: gradlew installDist in every sibling repo
 #   docker compose up -d --build
@@ -76,8 +76,8 @@ services:
       MONGODB_URI: mongodb://mongo:27017/thinklab_company_db?replicaSet=thinklab-rs0
 
   # Events on: user creation writes the user and its user.initiated event in one transaction (outbox),
-  # and the relay publishes it to JetStream. Only this service and notification-dispatch carry the NATS
-  # client; enabling events anywhere else fails at startup.
+  # and the relay publishes it to JetStream. Enabling events on a service without io.nats:jnats on its
+  # classpath fails at startup - see each service's own THINKLAB_EVENTS_ENABLED block below.
   party-authentication:
     <<: *service
     build: ../micronaut-party-authentication-service
@@ -92,14 +92,21 @@ services:
       THINKLAB_EVENTS_ENABLED: "true"
       THINKLAB_EVENTS_NATS_URL: nats://nats:4222
 
+  # Consumes it-hardware-maintenance's repair-started/repair-completed events (that service's ADR-034)
+  # to drive Asset MAINTENANCE status (this service's ADR-026).
   it-asset-registry:
     <<: *service
     build: ../micronaut-it-asset-registry-service
     image: thinklab/it-asset-registry:local
     ports: ["8083:8080"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      nats: { condition: service_healthy }
     environment:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_asset_db?replicaSet=thinklab-rs0
+      THINKLAB_EVENTS_ENABLED: "true"
+      THINKLAB_EVENTS_NATS_URL: nats://nats:4222
 
   it-operation-window:
     <<: *service
@@ -109,6 +116,21 @@ services:
     environment:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_operation_db?replicaSet=thinklab-rs0
+
+  # Publishes repair-started/repair-completed (ADR-034) for it-asset-registry to consume.
+  it-hardware-maintenance:
+    <<: *service
+    build: ../micronaut-it-hardware-maintenance-service
+    image: thinklab/it-hardware-maintenance:local
+    ports: ["8085:8080"]
+    depends_on:
+      mongo: { condition: service_healthy }
+      nats: { condition: service_healthy }
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_hardware_maintenance_db?replicaSet=thinklab-rs0
+      THINKLAB_EVENTS_ENABLED: "true"
+      THINKLAB_EVENTS_NATS_URL: nats://nats:4222
 
   site-reference-data-directory:
     <<: *service
@@ -132,6 +154,7 @@ services:
       GATEWAY_PARTY_REFERENCE_URL: http://party-reference-data-directory:8080
       GATEWAY_IT_ASSET_URL: http://it-asset-registry:8080
       GATEWAY_IT_OPERATION_WINDOW_URL: http://it-operation-window:8080
+      GATEWAY_IT_HARDWARE_MAINTENANCE_URL: http://it-hardware-maintenance:8080
       GATEWAY_SITE_REFERENCE_URL: http://site-reference-data-directory:8080
       GATEWAY_NOTIFICATION_DISPATCH_URL: http://notification-dispatch:8080
 

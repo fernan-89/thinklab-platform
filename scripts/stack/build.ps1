@@ -13,6 +13,7 @@ $repos = @(
     'micronaut-party-authentication-service',
     'micronaut-it-asset-registry-service',
     'micronaut-it-operation-window-service',
+    'micronaut-it-hardware-maintenance-service',
     'micronaut-site-reference-data-directory-service',
     'micronaut-platform-gateway-service',
     'micronaut-notification-dispatch-service'

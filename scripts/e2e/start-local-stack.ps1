@@ -75,8 +75,8 @@ foreach ($s in $Services) {
     # Security (THINKLAB_SECURITY_ENABLED / THINKLAB_JWT_PRIVATE_KEY / THINKLAB_BOOTSTRAP_SECRET / THINKLAB_CLIENT_SECRET)
     # is left to the caller: every service works with it unset (party-authentication then signs with an
     # ephemeral key, valid only for this run). See secured-smoke.ps1 for a secured run.
-    # Events, unlike security, must NOT reach every service: only party-authentication and
-    # notification-dispatch have io.nats:jnats on their runtime classpath (kit ADR-003). Forcing it off
+    # Events, unlike security, must NOT reach every service: only the services with io.nats:jnats on
+    # their runtime classpath (kit ADR-003) - see $Services' Events flag in Common.ps1. Forcing it off
     # elsewhere, even if the caller set it, is what keeps a plain -Build run (and a mixed one, like
     # events-smoke.ps1) from crashing the other services' OutboxRelay on a missing EventPublisher bean.
     if ($s.Events -and $callerEventsEnabled) {
