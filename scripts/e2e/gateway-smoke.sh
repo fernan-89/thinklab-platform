@@ -9,8 +9,10 @@ for path in \
   party-authentication/v1/retrieve \
   it-asset-registry/v1/retrieve \
   it-operation-window/v1/retrieve \
+  it-hardware-maintenance/v1/retrieve \
+  site-reference-data-directory/v1/retrieve \
   notification-dispatch/v1/retrieve; do
-  status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "X-Tenant-Id: $tenant" "$gateway/$path")
+  status=$(curl -s -o /dev/null -w '%{http_code}' --max-time 10 -H "X-Tenant-Id: $tenant" -H "X-Executor: gateway-smoke" "$gateway/$path")
   echo "GET /$path -> $status"
   [[ "$status" == 200 ]] || failed=1
 done
