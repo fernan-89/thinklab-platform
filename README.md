@@ -13,14 +13,17 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | party-authentication | 8082 | `micronaut-party-authentication-service` |
 | it-asset-registry | 8083 | `micronaut-it-asset-registry-service` |
 | it-operation-window | 8084 | `micronaut-it-operation-window-service` |
+| it-hardware-maintenance | 8085 | `micronaut-it-hardware-maintenance-service` |
+| site-reference-data-directory | 8087 | `micronaut-site-reference-data-directory-service` |
 | platform-gateway | 8088 | `micronaut-platform-gateway-service` |
 | notification-dispatch | 8089 | `micronaut-notification-dispatch-service` |
 
 Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
-transactional outbox in party-authentication needs) and NATS JetStream (the event backbone:
-party-authentication publishes `user.initiated`, notification-dispatch consumes it). Every service
-except the gateway has its own database; the gateway is a stateless proxy in front of the other five
-APIs.
+transactional outbox needs) and NATS JetStream (the event backbone: party-authentication publishes
+`user.initiated`, which notification-dispatch consumes; it-hardware-maintenance publishes repair
+started/completed, which it-asset-registry consumes to move the Asset in and out of MAINTENANCE). Every
+service except the gateway has its own database; the gateway is a stateless proxy in front of the
+other APIs.
 
 ## Run the stack
 
@@ -61,14 +64,16 @@ With the stack up (either way):
 |---|---|
 | `scripts/e2e/run-e2e.sh` (`run-e2e.ps1`) | every service's Postman suite (`docs/postman` in each repo), in dependency order, threading the `organisationId` created by the Party Reference Data Directory suite into the others |
 | `scripts/e2e/events-smoke.sh` (`events-smoke.ps1`) | creating a user publishes `user.initiated` through the outbox and NATS, and notification-dispatch delivers the welcome notification |
-| `scripts/e2e/gateway-smoke.sh` | the gateway routes to each of the five upstream APIs |
+| `scripts/e2e/hardware-maintenance-smoke.sh` (`hardware-maintenance-smoke.ps1`) | starting a WorkOrder repair moves the Asset into MAINTENANCE and passing quality check moves it back to DEPLOYED, both through NATS |
+| `scripts/e2e/gateway-smoke.sh` | the gateway routes to each upstream API |
 | `scripts/e2e/secured-smoke.ps1` | the security stack (tokens, JWKS, revocation) with `THINKLAB_SECURITY_ENABLED=true` |
 
 The bash runners need `newman` on the `PATH` (`npm install -g newman`). Reports (JUnit XML and the
 exported Postman environments) land in `.e2e/reports/`.
 
-The [`e2e` workflow](.github/workflows/e2e.yml) does all of this on GitHub Actions: it checks out
-every service's `master`, builds and starts the compose stack and runs the three bash checks, on every
+The [`e2e` workflow](.github/workflows/e2e.yml) does all of this on GitHub Actions: it clones
+every service listed in `scripts/stack/services.sh` from `master`, builds and starts the compose stack
+and runs the bash checks, on every
 push and pull request here, nightly, and on demand.
 
 ## Quality gates
