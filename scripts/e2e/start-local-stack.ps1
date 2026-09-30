@@ -67,7 +67,17 @@ $callerEventsNatsUrl = $env:THINKLAB_EVENTS_NATS_URL
 
 foreach ($s in $Services) {
     $dir = Join-Path $Workspace $s.Name
-    if ($Build) { Push-Location $dir; & .\gradlew.bat installDist --console=plain -q; Pop-Location }
+    if ($Build) {
+        Push-Location $dir
+        & .\gradlew.bat installDist --console=plain -q
+        $buildExitCode = $LASTEXITCODE
+        Pop-Location
+        # Found live: a silent installDist failure (no exit-code check here previously) left the java
+        # Start-Process below launching against an empty build\install\...\lib\ folder, crashing instantly
+        # with "Could not find or load main class" - the one failed service never showed up as a build
+        # error, only as a mysteriously-dead port once the readiness loop timed out on it.
+        if ($buildExitCode -ne 0) { throw "installDist failed for $($s.Name) (exit $buildExitCode)." }
+    }
     $lib = Join-Path $dir "build\install\$($s.Name)\lib\*"
     $env:MICRONAUT_SERVER_PORT = "$($s.Port)"
     if ($s.Db) { $env:MONGODB_URI = "mongodb://localhost:27017/$($s.Db)?replicaSet=$MongoReplSetName" } else { Remove-Item Env:\MONGODB_URI -ErrorAction SilentlyContinue }
