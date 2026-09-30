@@ -22,11 +22,19 @@ json() { python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
 uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
 
 # api METHOD URL [BODY] [HEADER...] -> prints "<status>\n<body>", never exits on a non-2xx (some checks
-# expect one, e.g. the 409 collision) - the caller decides with check_status/check_equal.
+# expect one, e.g. the 409 collision) - the caller decides with check_status/check_equal. A caller-
+# supplied X-Executor header (approval/capture needs the approver's own id, not this script's default)
+# replaces the default rather than being sent alongside it - two X-Executor headers on the same request
+# has the server pick the first one, silently ignoring the override.
 api() {
   local method=$1 url=$2 body=${3:-}; shift 3 || shift $#
-  local args=(-sS -X "$method" -H "$executor" -w '\n%{http_code}')
-  for h in "$@"; do args+=(-H "$h"); done
+  local args=(-sS -X "$method" -w '\n%{http_code}')
+  local has_executor=0
+  for h in "$@"; do
+    args+=(-H "$h")
+    [[ "$h" == X-Executor:* ]] && has_executor=1
+  done
+  ((has_executor)) || args+=(-H "$executor")
   [[ -n "$body" ]] && args+=(-H 'Content-Type: application/json' -d "$body")
   local out; out=$(curl "${args[@]}" "$url")
   local code=${out##*$'\n'}; local content=${out%$'\n'*}
