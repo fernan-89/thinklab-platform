@@ -1,4 +1,4 @@
-# ThinkLab local stack: MongoDB (single-node replica set), NATS JetStream and the nine services.
+# ThinkLab local stack: MongoDB (single-node replica set), NATS JetStream and the eleven services.
 #
 #   scripts/stack/build.sh        # or scripts\stack\build.ps1: gradlew installDist in every sibling repo
 #   docker compose up -d --build
@@ -141,6 +141,34 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_site_db?replicaSet=thinklab-rs0
 
+  # workflow-approval and it-change-management (Journey 7): no events either (ADR-032 of both) - GMUD
+  # calls both workflow-approval and it-operation-window synchronously over HTTP at request time.
+  workflow-approval:
+    <<: *service
+    build: ../micronaut-workflow-approval-service
+    image: thinklab/workflow-approval:local
+    ports: ["8090:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_workflow_approval_db?replicaSet=thinklab-rs0
+
+  # CAB/ECAB policy ids have no default here (see that service's README): docker-compose has no way to
+  # provision them at container start, unlike start-local-stack.ps1's own bootstrap step. Set
+  # THINKLAB_CAB_POLICY_ID/THINKLAB_ECAB_POLICY_ID on the host environment before `docker compose up` if
+  # you need route-for-approval to work under Compose; STANDARD changes (pre-approved) need neither.
+  it-change-management:
+    <<: *service
+    build: ../micronaut-it-change-management-service
+    image: thinklab/it-change-management:local
+    ports: ["8086:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_it_change_management_db?replicaSet=thinklab-rs0
+      WORKFLOW_APPROVAL_SERVICE_URL: http://workflow-approval:8080
+      OPERATION_WINDOW_SERVICE_URL: http://it-operation-window:8080
+      THINKLAB_CAB_POLICY_ID: ${THINKLAB_CAB_POLICY_ID:-}
+      THINKLAB_ECAB_POLICY_ID: ${THINKLAB_ECAB_POLICY_ID:-}
+
   # Stateless proxy: no database. Its readiness probes party-authentication's liveness.
   gateway:
     build: ../micronaut-platform-gateway-service
@@ -157,6 +185,8 @@ services:
       GATEWAY_IT_HARDWARE_MAINTENANCE_URL: http://it-hardware-maintenance:8080
       GATEWAY_SITE_REFERENCE_URL: http://site-reference-data-directory:8080
       GATEWAY_NOTIFICATION_DISPATCH_URL: http://notification-dispatch:8080
+      GATEWAY_WORKFLOW_APPROVAL_URL: http://workflow-approval:8080
+      GATEWAY_IT_CHANGE_MANAGEMENT_URL: http://it-change-management:8080
 
   # Consumes party-authentication's user.initiated events and sends the welcome notification.
   notification-dispatch:

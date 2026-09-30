@@ -16,7 +16,9 @@ $repos = @(
     'micronaut-it-hardware-maintenance-service',
     'micronaut-site-reference-data-directory-service',
     'micronaut-platform-gateway-service',
-    'micronaut-notification-dispatch-service'
+    'micronaut-notification-dispatch-service',
+    'micronaut-workflow-approval-service',
+    'micronaut-it-change-management-service'
 )
 foreach ($repo in $repos) {
     $dir = Join-Path $workspace $repo

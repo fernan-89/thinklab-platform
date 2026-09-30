@@ -31,7 +31,12 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-platform-gateway-service';                Port = 8088; Db = $null },
     # Consumes party-authentication's user.initiated event (thinklab-service-kit ADR-003), so it comes
     # after it; also has nothing to wait on before NATS itself is up.
-    [pscustomobject]@{ Name = 'micronaut-notification-dispatch-service';           Port = 8089; Db = 'thinklab_notification_db'; Events = $true }
+    [pscustomobject]@{ Name = 'micronaut-notification-dispatch-service';           Port = 8089; Db = 'thinklab_notification_db'; Events = $true },
+    # No events either (ADR-032 of both new Journey 7 services) - it-change-management calls both of
+    # these synchronously over HTTP at request time, not at startup, so list order here is only
+    # cosmetic (matches the dependency direction for readability, not a real wait-for requirement).
+    [pscustomobject]@{ Name = 'micronaut-workflow-approval-service';               Port = 8090; Db = 'thinklab_workflow_approval_db' },
+    [pscustomobject]@{ Name = 'micronaut-it-change-management-service';            Port = 8086; Db = 'thinklab_it_change_management_db' }
 )
 
 function Get-Java21 {

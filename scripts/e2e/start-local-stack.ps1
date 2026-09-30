@@ -86,6 +86,42 @@ foreach ($s in $Services) {
         $env:THINKLAB_EVENTS_ENABLED = 'false'
         Remove-Item Env:\THINKLAB_EVENTS_NATS_URL -ErrorAction SilentlyContinue
     }
+    # it-change-management (GMUD) needs a real CAB/ECAB ApprovalPolicy id at JVM startup
+    # (thinklab.change-management.cab-policy-id/ecab-policy-id, ADR-031 of that service) - there is no
+    # runtime API to change it after the process is up. workflow-approval-service is already running by
+    # this point in $Services (listed right before GMUD), so provision both policies against it here,
+    # once, and thread the ids in as env vars for GMUD's own Start-Process below. The policy's own
+    # organisationId is arbitrary - workflow-approval-service resolves a policy by id alone, never
+    # scoped by tenant (see InitiateApprovalRequestUseCase), so any fixed placeholder tenant works.
+    if ($s.Name -eq 'micronaut-it-change-management-service') {
+        # workflow-approval-service was only just Start-Process'd in the previous loop iteration -
+        # its JVM boot is not synchronous with that call returning, so calling its API immediately
+        # races it (found live: Invoke-RestMethod hit connection-refused, and since this script runs
+        # under $ErrorActionPreference = 'Stop' that aborted the whole run before GMUD's own
+        # Start-Process below was ever reached, even though every other service still started fine).
+        if (-not (Wait-Http 'http://localhost:8090/health/readiness' 120)) {
+            throw 'workflow-approval-service did not become ready in time; cannot provision CAB/ECAB policies for GMUD.'
+        }
+        Write-Host 'Provisioning CAB/ECAB ApprovalPolicy records on workflow-approval-service...'
+        $policyTenant = [guid]::NewGuid().ToString()
+        $cabApprovers = @([guid]::NewGuid().ToString(), [guid]::NewGuid().ToString(), [guid]::NewGuid().ToString())
+        $ecabApprovers = @([guid]::NewGuid().ToString(), [guid]::NewGuid().ToString())
+        $cabPolicy = Invoke-RestMethod -Method Post -Uri 'http://localhost:8090/workflow-approval/v1/policy/initiate' `
+            -Headers @{ 'X-Tenant-Id' = $policyTenant } -ContentType 'application/json' `
+            -Body (@{ name = 'CAB'; requiredApprovals = 2; eligibleApproverIds = $cabApprovers } | ConvertTo-Json)
+        $ecabPolicy = Invoke-RestMethod -Method Post -Uri 'http://localhost:8090/workflow-approval/v1/policy/initiate' `
+            -Headers @{ 'X-Tenant-Id' = $policyTenant } -ContentType 'application/json' `
+            -Body (@{ name = 'ECAB'; requiredApprovals = 1; eligibleApproverIds = $ecabApprovers } | ConvertTo-Json)
+        $env:THINKLAB_CAB_POLICY_ID = $cabPolicy.id
+        $env:THINKLAB_ECAB_POLICY_ID = $ecabPolicy.id
+        # Handed to change-management-smoke.ps1 via the run directory, since env vars set in this
+        # process are not visible to a script invoked afterwards in a new PowerShell session.
+        [pscustomobject]@{
+            cabPolicyId = $cabPolicy.id; cabApproverIds = $cabApprovers
+            ecabPolicyId = $ecabPolicy.id; ecabApproverIds = $ecabApprovers
+        } | ConvertTo-Json | Set-Content "$RunDir\change-management-policies.json"
+        Write-Host "  CAB policy [$($cabPolicy.id)] ECAB policy [$($ecabPolicy.id)]"
+    }
     Write-Host "Starting $($s.Name) on :$($s.Port)..."
     $p = Start-Process $java -ArgumentList '-cp', "`"$lib`"", 'com.thinklab.Application' `
         -RedirectStandardOutput "$RunDir\$($s.Name).log" -RedirectStandardError "$RunDir\$($s.Name).err" -WindowStyle Hidden -PassThru
