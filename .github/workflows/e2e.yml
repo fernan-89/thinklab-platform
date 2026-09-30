@@ -58,6 +58,22 @@ jobs:
       - name: Wait until every service is ready
         run: thinklab-platform/scripts/stack/wait-ready.sh 240
 
+      # it-change-management (GMUD) needs a real CAB/ECAB ApprovalPolicy id at JVM startup
+      # (thinklab.change-management.cab-policy-id/ecab-policy-id, ADR-031 of that service) - there is no
+      # runtime API to set these after boot. It already started above with both blank (STANDARD changes,
+      # pre-approved, still work fine) - now that workflow-approval is up, provision the real policies
+      # against it and recreate just the it-change-management container with their ids: compose detects
+      # the changed environment and restarts only that one service, nothing else is touched.
+      - name: Provision CAB/ECAB policies for it-change-management
+        run: thinklab-platform/scripts/stack/provision-change-management.sh >> "$GITHUB_ENV"
+
+      - name: Restart it-change-management with its CAB/ECAB policy ids
+        working-directory: thinklab-platform
+        run: docker compose up -d it-change-management
+
+      - name: Wait until it-change-management is ready again
+        run: thinklab-platform/scripts/stack/wait-ready.sh 120
+
       - name: Install newman
         run: npm install -g newman
 
@@ -69,6 +85,9 @@ jobs:
 
       - name: Hardware maintenance smoke (WorkOrder repair -> Asset MAINTENANCE -> DEPLOYED)
         run: thinklab-platform/scripts/e2e/hardware-maintenance-smoke.sh
+
+      - name: Change management smoke (CAB/ECAB quorum, veto, scheduling collision)
+        run: thinklab-platform/scripts/e2e/change-management-smoke.sh
 
       - name: Gateway smoke
         run: thinklab-platform/scripts/e2e/gateway-smoke.sh
