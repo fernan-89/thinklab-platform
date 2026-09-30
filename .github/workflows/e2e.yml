@@ -12,7 +12,7 @@ on:
   schedule:
     - cron: '17 4 * * *'
 
-# packages: read resolves thinklab-service-kit from GitHub Packages with the workflow token.
+# packages: read resolves micronaut-thinklab-service-kit from GitHub Packages with the workflow token.
 permissions:
   contents: read
   packages: read

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Live proof of the event backbone (thinklab-service-kit ADR-003, ADR-023/024 of
+  Live proof of the event backbone (micronaut-thinklab-service-kit ADR-003, ADR-023/024 of
   notification-dispatch-service): a real User creation publishes an outbox event, the relay ships it to
   NATS JetStream, notification-dispatch consumes it and dispatches a real welcome notification.
 

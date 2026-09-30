@@ -38,9 +38,9 @@ scripts/stack/wait-ready.sh      # waits for /health/readiness on every service
 ```
 
 The images package each service's `installDist` output, so nothing is compiled inside Docker and no
-credential reaches an image. The build needs `thinklab-service-kit` from GitHub Packages: export
+credential reaches an image. The build needs `micronaut-thinklab-service-kit` from GitHub Packages: export
 `GITHUB_ACTOR` and `GITHUB_TOKEN` (a token with `read:packages`), or publish the kit to your local
-Maven repository first (`./gradlew publishToMavenLocal` in `thinklab-service-kit`).
+Maven repository first (`./gradlew publishToMavenLocal` in `micronaut-thinklab-service-kit`).
 
 `docker compose down -v` stops everything and drops the data volumes.
 

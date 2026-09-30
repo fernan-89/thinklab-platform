@@ -29,7 +29,7 @@ $script:Services = @(
     # No MongoDB of its own (stateless proxy); listed last so its own readiness (which depends on
     # party-authentication's liveness via warmup.endpoints) has something to actually wait on.
     [pscustomobject]@{ Name = 'micronaut-platform-gateway-service';                Port = 8088; Db = $null },
-    # Consumes party-authentication's user.initiated event (thinklab-service-kit ADR-003), so it comes
+    # Consumes party-authentication's user.initiated event (micronaut-thinklab-service-kit ADR-003), so it comes
     # after it; also has nothing to wait on before NATS itself is up.
     [pscustomobject]@{ Name = 'micronaut-notification-dispatch-service';           Port = 8089; Db = 'thinklab_notification_db'; Events = $true },
     # No events either (ADR-032 of both new Journey 7 services) - it-change-management calls both of

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runs `gradlew installDist` in every sibling service repository; docker-compose.yml packages the result.
-# thinklab-service-kit comes from GitHub Packages: export GITHUB_ACTOR and GITHUB_TOKEN (a token with
+# micronaut-thinklab-service-kit comes from GitHub Packages: export GITHUB_ACTOR and GITHUB_TOKEN (a token with
 # read:packages), or have the kit in your local Maven repository (`./gradlew publishToMavenLocal` in it).
 set -euo pipefail
 source "$(dirname "$0")/services.sh"
