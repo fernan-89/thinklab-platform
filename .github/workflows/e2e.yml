@@ -1,8 +1,8 @@
 name: e2e
 
 # The whole platform, end to end: every service built from its repository's master, started with
-# docker-compose.yml (MongoDB replica set, NATS JetStream, seven services), then exercised with each
-# service's Postman suite, the event-backbone smoke and the gateway smoke.
+# docker-compose.yml (MongoDB replica set, NATS JetStream and every service), then exercised with each
+# service's Postman suite, the two event-integration smokes and the gateway smoke.
 on:
   push:
     branches: [master]
@@ -26,23 +26,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      # The scripts expect the service repositories as siblings of thinklab-platform.
+      # The scripts expect the service repositories as siblings of thinklab-platform. The list comes
+      # from scripts/stack/services.sh, so wiring a new service into the stack needs no change here.
       - uses: actions/checkout@v7
         with: { path: thinklab-platform }
-      - uses: actions/checkout@v7
-        with: { repository: fernan-89/micronaut-hash-token-registry-service, path: micronaut-hash-token-registry-service }
-      - uses: actions/checkout@v7
-        with: { repository: fernan-89/micronaut-party-reference-data-directory-service, path: micronaut-party-reference-data-directory-service }
-      - uses: actions/checkout@v7
-        with: { repository: fernan-89/micronaut-party-authentication-service, path: micronaut-party-authentication-service }
-      - uses: actions/checkout@v7
-        with: { repository: fernan-89/micronaut-it-asset-registry-service, path: micronaut-it-asset-registry-service }
-      - uses: actions/checkout@v7
-        with: { repository: fernan-89/micronaut-it-operation-window-service, path: micronaut-it-operation-window-service }
-      - uses: actions/checkout@v7
-        with: { repository: fernan-89/micronaut-platform-gateway-service, path: micronaut-platform-gateway-service }
-      - uses: actions/checkout@v7
-        with: { repository: fernan-89/micronaut-notification-dispatch-service, path: micronaut-notification-dispatch-service }
+      - name: Clone the service repositories (master)
+        run: |
+          source thinklab-platform/scripts/stack/services.sh
+          for entry in "${THINKLAB_SERVICES[@]}"; do
+            repo="${entry%%|*}"
+            git clone --quiet --depth 1 "https://github.com/${{ github.repository_owner }}/$repo.git" "$repo"
+            echo "$repo $(git -C "$repo" rev-parse --short HEAD)"
+          done
 
       - uses: actions/setup-java@v6
         with:
@@ -71,6 +66,9 @@ jobs:
 
       - name: Event backbone smoke (user.initiated -> welcome notification)
         run: thinklab-platform/scripts/e2e/events-smoke.sh
+
+      - name: Hardware maintenance smoke (WorkOrder repair -> Asset MAINTENANCE -> DEPLOYED)
+        run: thinklab-platform/scripts/e2e/hardware-maintenance-smoke.sh
 
       - name: Gateway smoke
         run: thinklab-platform/scripts/e2e/gateway-smoke.sh
