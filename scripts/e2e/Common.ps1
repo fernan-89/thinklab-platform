@@ -36,7 +36,14 @@ $script:Services = @(
     # these synchronously over HTTP at request time, not at startup, so list order here is only
     # cosmetic (matches the dependency direction for readability, not a real wait-for requirement).
     [pscustomobject]@{ Name = 'micronaut-workflow-approval-service';               Port = 8090; Db = 'thinklab_workflow_approval_db' },
-    [pscustomobject]@{ Name = 'micronaut-it-change-management-service';            Port = 8086; Db = 'thinklab_it_change_management_db' }
+    [pscustomobject]@{ Name = 'micronaut-it-change-management-service';            Port = 8086; Db = 'thinklab_it_change_management_db' },
+    # Journey 10. No events. it-discovery calls it-asset-registry only on control/promote, and
+    # it-asset-registry calls ci-type-catalog on initiate/update (fail-open), all at request time, so list
+    # order is only cosmetic - except that ci-type-catalog is LAST on purpose: its own suite activates
+    # SERVER/LAPTOP schemas on the shared tenant, which must not exist yet while earlier suites create assets.
+    [pscustomobject]@{ Name = 'micronaut-it-discovery-service';                    Port = 8091; Db = 'thinklab_it_discovery_db' },
+    [pscustomobject]@{ Name = 'micronaut-it-topology-graph-service';               Port = 8092; Db = 'thinklab_it_topology_graph_db' },
+    [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 
 function Get-Java21 {

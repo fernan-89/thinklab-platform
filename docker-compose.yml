@@ -1,4 +1,4 @@
-# ThinkLab local stack: MongoDB (single-node replica set), NATS JetStream and the eleven services.
+# ThinkLab local stack: MongoDB (single-node replica set), NATS JetStream and the fourteen services.
 #
 #   scripts/stack/build.sh        # or scripts\stack\build.ps1: gradlew installDist in every sibling repo
 #   docker compose up -d --build
@@ -105,6 +105,7 @@ services:
     environment:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_asset_db?replicaSet=thinklab-rs0
+      CI_TYPE_CATALOG_SERVICE_URL: http://ci-type-catalog:8080
       THINKLAB_EVENTS_ENABLED: "true"
       THINKLAB_EVENTS_NATS_URL: nats://nats:4222
 
@@ -169,6 +170,36 @@ services:
       THINKLAB_CAB_POLICY_ID: ${THINKLAB_CAB_POLICY_ID:-}
       THINKLAB_ECAB_POLICY_ID: ${THINKLAB_ECAB_POLICY_ID:-}
 
+  # Journey 10 (no events, ADR-032 of it-discovery): promotion calls it-asset-registry synchronously, and
+  # it-asset-registry validates Asset.specifications against ci-type-catalog (fail-open, ADR-027).
+  it-discovery:
+    <<: *service
+    build: ../micronaut-it-discovery-service
+    image: thinklab/it-discovery:local
+    ports: ["8091:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_it_discovery_db?replicaSet=thinklab-rs0
+      ASSET_REGISTRY_SERVICE_URL: http://it-asset-registry:8080
+
+  it-topology-graph:
+    <<: *service
+    build: ../micronaut-it-topology-graph-service
+    image: thinklab/it-topology-graph:local
+    ports: ["8092:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_it_topology_graph_db?replicaSet=thinklab-rs0
+
+  ci-type-catalog:
+    <<: *service
+    build: ../micronaut-ci-type-catalog-service
+    image: thinklab/ci-type-catalog:local
+    ports: ["8093:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_ci_type_catalog_db?replicaSet=thinklab-rs0
+
   # Stateless proxy: no database. Its readiness probes party-authentication's liveness.
   gateway:
     build: ../micronaut-platform-gateway-service
@@ -187,6 +218,9 @@ services:
       GATEWAY_NOTIFICATION_DISPATCH_URL: http://notification-dispatch:8080
       GATEWAY_WORKFLOW_APPROVAL_URL: http://workflow-approval:8080
       GATEWAY_IT_CHANGE_MANAGEMENT_URL: http://it-change-management:8080
+      GATEWAY_IT_DISCOVERY_URL: http://it-discovery:8080
+      GATEWAY_IT_TOPOLOGY_GRAPH_URL: http://it-topology-graph:8080
+      GATEWAY_CI_TYPE_CATALOG_URL: http://ci-type-catalog:8080
 
   # Consumes party-authentication's user.initiated events and sends the welcome notification.
   notification-dispatch:

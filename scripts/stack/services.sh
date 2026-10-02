@@ -13,6 +13,9 @@ THINKLAB_SERVICES=(
   "micronaut-notification-dispatch-service|notification-dispatch|8089"
   "micronaut-workflow-approval-service|workflow-approval|8090"
   "micronaut-it-change-management-service|it-change-management|8086"
+  "micronaut-it-discovery-service|it-discovery|8091"
+  "micronaut-it-topology-graph-service|it-topology-graph|8092"
+  "micronaut-ci-type-catalog-service|ci-type-catalog|8093"
 )
 PLATFORM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 WORKSPACE_DIR="$(cd "$PLATFORM_DIR/.." && pwd)"
