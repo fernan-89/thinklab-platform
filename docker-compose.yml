@@ -234,6 +234,8 @@ services:
       GATEWAY_COMPLIANCE_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080
       GATEWAY_AUDIT_ENABLED: "true"
+      # Development default so the demo stack works out of the box; set a real secret anywhere that matters (ledger ADR-033).
+      GATEWAY_AUDIT_PSEUDONYM_KEY: ${GATEWAY_AUDIT_PSEUDONYM_KEY:-dev-only-pseudonym-key-change-me}
 
   # Consumes party-authentication's user.initiated events and sends the welcome notification.
   notification-dispatch:

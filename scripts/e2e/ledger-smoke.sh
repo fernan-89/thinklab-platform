@@ -102,6 +102,30 @@ check_equal 'same verdict through the gateway' "$head_hash" "$(api_body "$via_ga
 other=$(api_body "$(api GET "$ledger_api/retrieve" "" "X-Tenant-Id: $(uuid)")")
 check_equal 'another tenant has an empty ledger' 0 "$(python3 -c "import json,sys; print(len(json.loads(sys.argv[1])))" "$other")"
 
+# 6. Data protection (ledger ADR-033, gateway ADR-024): a sign-in attempt is recorded with a keyed pseudonym of the email and the
+#    outcome - and neither the password nor the email appears anywhere on the ledger.
+secret_user="smoke.$(uuid | tr -d '-' | cut -c1-8)"
+secret_email="$secret_user@example.com"
+secret_password="Sm0ke-P@ss-$(uuid | tr -d '-' | cut -c1-8)"
+sign_in=$(api POST "$gateway/party-authentication/v1/session/initiate" "{\"organisationId\":\"$org_id\",\"email\":\"$secret_email\",\"password\":\"$secret_password\"}")
+sign_in_status=$(api_status "$sign_in")
+check_equal 'a sign-in with unknown credentials is refused (4xx)' 'True' "$([[ $sign_in_status -ge 400 && $sign_in_status -lt 500 ]] && echo True || echo False)"
+login_entry=''
+for _ in $(seq 1 20); do
+  login_entry=$(api_body "$(api GET "$ledger_api/retrieve?limit=50" "" "$tenant")" | python3 -c "import json,sys; m=[e for e in json.load(sys.stdin) if e['action']=='POST /party-authentication/v1/session/initiate']; print(json.dumps(m[0]) if m else '')")
+  [[ -n "$login_entry" ]] && break
+  sleep 0.5
+done
+check_equal 'the sign-in attempt was recorded' 'True' "$([[ -n "$login_entry" ]] && echo True || echo False)"
+[[ -z "$login_entry" ]] && login_entry='{}'
+login_actor=$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['actor'])" "$login_entry" 2>/dev/null || echo '')
+check_equal 'actor is a keyed pseudonym, not the email' 'True' "$(python3 -c "import re,sys; print(bool(re.fullmatch(r'login:[0-9a-f]{32}', sys.argv[1])))" "$login_actor")"
+check_equal 'the outcome is recorded' "status=$sign_in_status" "$(python3 -c "import json,sys; print(json.loads(sys.argv[1])['detail'])" "$login_entry" 2>/dev/null || echo '')"
+ledger_dump=$(api_body "$(api GET "$ledger_api/retrieve?limit=500" "" "$tenant")")
+check_equal 'the password appears nowhere on the ledger' 'False' "$([[ "$ledger_dump" == *"$secret_password"* ]] && echo True || echo False)"
+check_equal 'the email appears nowhere on the ledger' 'False' "$([[ "${ledger_dump,,}" == *"${secret_user,,}"* ]] && echo True || echo False)"
+check_equal 'the chain is still valid with the sign-in entry on it' 'True' "$(api_body "$(api GET "$ledger_api/integrity-check/evaluate" "" "$tenant")" | json "['valid']")"
+
 echo
 echo "Ledger smoke: $checks checks, $failed failed"
 exit $((failed > 0))

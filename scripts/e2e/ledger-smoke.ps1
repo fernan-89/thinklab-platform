@@ -114,6 +114,28 @@ Assert-Equal 'same verdict through the gateway' $viaGateway.Body.headHash $refus
 $other = Invoke-Api GET "$ledger/retrieve" @{ 'X-Tenant-Id' = [guid]::NewGuid().ToString() }
 Assert-Equal 'another tenant has an empty ledger' @($other.Body).Count 0
 
+# 6. Data protection (ledger ADR-033, gateway ADR-024): a sign-in attempt is recorded with a keyed pseudonym of the email and the
+#    outcome - and neither the password nor the email appears anywhere on the ledger.
+$secretEmail = "smoke.$([guid]::NewGuid().ToString('N').Substring(0,8))@example.com"
+$secretPassword = "Sm0ke-P@ss-$([guid]::NewGuid().ToString('N').Substring(0,8))"
+$signIn = Invoke-Api POST "$GatewayUrl/party-authentication/v1/session/initiate" @{} @{ organisationId = $orgResponse.Body.id; email = $secretEmail; password = $secretPassword }
+Assert-Equal 'a sign-in with unknown credentials is refused (4xx)' ($signIn.Status -ge 400 -and $signIn.Status -lt 500) $true
+$loginEntry = $null
+for ($i = 0; $i -lt 20; $i++) {
+    $all = @((Invoke-Api GET "$ledger/retrieve?limit=50" @{ 'X-Tenant-Id' = $orgResponse.Body.id }).Body)
+    $loginEntry = $all | Where-Object { $_.action -eq 'POST /party-authentication/v1/session/initiate' } | Select-Object -First 1
+    if ($loginEntry) { break }
+    Start-Sleep -Milliseconds 500
+}
+Assert-Equal 'the sign-in attempt was recorded' ($null -ne $loginEntry) $true
+Assert-Equal 'actor is a keyed pseudonym, not the email' ($loginEntry.actor -match '^login:[0-9a-f]{32}$') $true
+Assert-Equal 'the outcome is recorded' $loginEntry.detail "status=$($signIn.Status)"
+$ledgerDump = (Invoke-Api GET "$ledger/retrieve?limit=500" @{ 'X-Tenant-Id' = $orgResponse.Body.id }).Body | ConvertTo-Json -Depth 6
+Assert-Equal 'the password appears nowhere on the ledger' $ledgerDump.Contains($secretPassword) $false
+Assert-Equal 'the email appears nowhere on the ledger' $ledgerDump.ToLower().Contains($secretEmail.ToLower().Split('@')[0]) $false
+$stillValid = Invoke-Api GET "$ledger/integrity-check/evaluate" @{ 'X-Tenant-Id' = $orgResponse.Body.id }
+Assert-Equal 'the chain is still valid with the sign-in entry on it' $stillValid.Body.valid $true
+
 $results | Format-Table -AutoSize | Out-String | Write-Output
 $failed = @($results | Where-Object { $_.Result -eq 'FAIL' }).Count
 Write-Output ("Ledger smoke: {0} checks, {1} failed" -f $results.Count, $failed)

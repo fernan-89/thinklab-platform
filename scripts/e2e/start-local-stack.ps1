@@ -66,6 +66,8 @@ $callerEventsEnabled = $env:THINKLAB_EVENTS_ENABLED
 $callerEventsNatsUrl = $env:THINKLAB_EVENTS_NATS_URL
 # The gateway records every mutating request on the compliance ledger (only it reads this; opt-in, fail-open).
 $env:GATEWAY_AUDIT_ENABLED = 'true'
+# Development-only key (ledger ADR-033): pseudonyms in a local run are not meant to be protected, only to exercise the code path.
+$env:GATEWAY_AUDIT_PSEUDONYM_KEY = 'local-dev-only-pseudonym-key'
 
 foreach ($s in $Services) {
     $dir = Join-Path $Workspace $s.Name
