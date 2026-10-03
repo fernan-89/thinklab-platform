@@ -43,6 +43,8 @@ $script:Services = @(
     # SERVER/LAPTOP schemas on the shared tenant, which must not exist yet while earlier suites create assets.
     [pscustomobject]@{ Name = 'micronaut-it-discovery-service';                    Port = 8091; Db = 'thinklab_it_discovery_db' },
     [pscustomobject]@{ Name = 'micronaut-it-topology-graph-service';               Port = 8092; Db = 'thinklab_it_topology_graph_db' },
+    # Journey 8. Independent of the others; the gateway appends to it when gateway.audit.enabled is on.
+    [pscustomobject]@{ Name = 'micronaut-compliance-audit-ledger-service';         Port = 8094; Db = 'thinklab_compliance_audit_ledger_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 

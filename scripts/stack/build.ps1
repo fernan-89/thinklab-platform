@@ -21,6 +21,7 @@ $repos = @(
     'micronaut-it-change-management-service',
     'micronaut-it-discovery-service',
     'micronaut-it-topology-graph-service',
+    'micronaut-compliance-audit-ledger-service',
     'micronaut-ci-type-catalog-service'
 )
 foreach ($repo in $repos) {

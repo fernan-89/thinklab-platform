@@ -64,6 +64,8 @@ if (-not (Get-Process nats-server -ErrorAction SilentlyContinue)) {
 # Captured once, before the loop starts overwriting $env:THINKLAB_EVENTS_ENABLED per service.
 $callerEventsEnabled = $env:THINKLAB_EVENTS_ENABLED
 $callerEventsNatsUrl = $env:THINKLAB_EVENTS_NATS_URL
+# The gateway records every mutating request on the compliance ledger (only it reads this; opt-in, fail-open).
+$env:GATEWAY_AUDIT_ENABLED = 'true'
 
 foreach ($s in $Services) {
     $dir = Join-Path $Workspace $s.Name

@@ -92,6 +92,9 @@ jobs:
       - name: Discovery + topology smoke (promotion -> Asset, schema 422, blast radius)
         run: thinklab-platform/scripts/e2e/discovery-topology-smoke.sh
 
+      - name: Ledger smoke (gateway records every mutation, hash chain verifies)
+        run: thinklab-platform/scripts/e2e/ledger-smoke.sh
+
       - name: Gateway smoke
         run: thinklab-platform/scripts/e2e/gateway-smoke.sh
 
