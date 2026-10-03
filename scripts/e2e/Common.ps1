@@ -45,6 +45,8 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-it-topology-graph-service';               Port = 8092; Db = 'thinklab_it_topology_graph_db' },
     # Journey 8. Independent of the others; the gateway appends to it when gateway.audit.enabled is on.
     [pscustomobject]@{ Name = 'micronaut-compliance-audit-ledger-service';         Port = 8094; Db = 'thinklab_compliance_audit_ledger_db' },
+    # Journey 9. Independent of the others; no events, no calls to other services (the web app and, later, other services ask it).
+    [pscustomobject]@{ Name = 'micronaut-subscription-billing-service';            Port = 8095; Db = 'thinklab_subscription_billing_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 

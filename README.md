@@ -17,6 +17,13 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | site-reference-data-directory | 8087 | `micronaut-site-reference-data-directory-service` |
 | platform-gateway | 8088 | `micronaut-platform-gateway-service` |
 | notification-dispatch | 8089 | `micronaut-notification-dispatch-service` |
+| it-change-management | 8086 | `micronaut-it-change-management-service` |
+| workflow-approval | 8090 | `micronaut-workflow-approval-service` |
+| it-discovery | 8091 | `micronaut-it-discovery-service` |
+| it-topology-graph | 8092 | `micronaut-it-topology-graph-service` |
+| ci-type-catalog | 8093 | `micronaut-ci-type-catalog-service` |
+| compliance-audit-ledger | 8094 | `micronaut-compliance-audit-ledger-service` |
+| subscription-billing | 8095 | `micronaut-subscription-billing-service` |
 
 Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
 transactional outbox needs) and NATS JetStream (the event backbone: party-authentication publishes
@@ -68,6 +75,8 @@ With the stack up (either way):
 | `scripts/e2e/run-e2e.sh` (`run-e2e.ps1`) | every service's Postman suite (`docs/postman` in each repo), in dependency order, threading the `organisationId` created by the Party Reference Data Directory suite into the others |
 | `scripts/e2e/events-smoke.sh` (`events-smoke.ps1`) | creating a user publishes `user.initiated` through the outbox and NATS, and notification-dispatch delivers the welcome notification |
 | `scripts/e2e/hardware-maintenance-smoke.sh` (`hardware-maintenance-smoke.ps1`) | starting a WorkOrder repair moves the Asset into MAINTENANCE and passing quality check moves it back to DEPLOYED, both through NATS |
+| `scripts/e2e/ledger-smoke.sh` (`ledger-smoke.ps1`) | the gateway records every mutating request on the compliance ledger and the hash chain verifies, anchoring included |
+| `scripts/e2e/billing-smoke.sh` (`billing-smoke.ps1`) | plans, subscriptions and entitlements through the gateway (limits, plan change, grace period, suspension, one subscription per organisation), every subscription mutation recorded on the ledger |
 | `scripts/e2e/gateway-smoke.sh` | the gateway routes to each upstream API |
 | `scripts/e2e/secured-smoke.ps1` | the security stack (tokens, JWKS, revocation) with `THINKLAB_SECURITY_ENABLED=true` |
 

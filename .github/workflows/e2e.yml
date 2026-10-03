@@ -95,6 +95,9 @@ jobs:
       - name: Ledger smoke (gateway records every mutation, hash chain verifies)
         run: thinklab-platform/scripts/e2e/ledger-smoke.sh
 
+      - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/billing-smoke.sh
+
       - name: Gateway smoke
         run: thinklab-platform/scripts/e2e/gateway-smoke.sh
 

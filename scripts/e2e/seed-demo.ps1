@@ -3,7 +3,7 @@
   Seeds a demo tenant through the gateway so the web app (thinklab-web) has something to show.
 .DESCRIPTION
   Creates one Organisation, a handful of assets in different lifecycle states, a few items waiting in the
-  discovery queue (one already claimed), and a small web -> app -> db dependency graph. Prints the
+  discovery queue (one already claimed), a small web -> app -> db dependency graph, and the plan catalogue with a TEAM subscription. Prints the
   organisation id to sign in with. Needs the stack from start-local-stack.ps1 (security off).
 #>
 param([string]$Gateway = 'http://localhost:8088')
@@ -61,6 +61,22 @@ $host1 = New-Node 'esx-host-1' 'ASSET'
 foreach ($e in @(@($web, $app, 'DEPENDS_ON'), @($app, $db, 'DEPENDS_ON'), @($app, $cache, 'DEPENDS_ON'), @($db, $host1, 'HOSTED_ON'), @($cache, $host1, 'HOSTED_ON'))) {
     Invoke-Gateway POST '/it-topology-graph/v1/edge/initiate' $tenant @{ relationshipType = $e[2]; sourceNodeId = $e[0].id; targetNodeId = $e[1].id } | Out-Null
 }
+
+# Editions: the platform-wide plan catalogue (created once; a second run finds them already there) and a TEAM subscription for the
+# demo tenant. HOMELAB is also the default plan that stands in for any organisation without a subscription.
+$plans = @(
+    @{ code = 'HOMELAB'; name = 'Homelab'; entitlements = @{ assets = 25; sites = 1; discovery = 1; audit = 0; sso = 0 } },
+    @{ code = 'TEAM'; name = 'Team'; entitlements = @{ assets = 500; sites = 10; discovery = 1; audit = 1; sso = 0 } },
+    @{ code = 'ENTERPRISE'; name = 'Enterprise'; entitlements = @{ assets = -1; sites = -1; discovery = 1; audit = 1; sso = 1 } }
+)
+foreach ($p in $plans) {
+    try {
+        $created = Invoke-Gateway POST '/subscription-billing/v1/plan/initiate' $executor $p
+        Invoke-Gateway PUT "/subscription-billing/v1/plan/$($created.id)/control/activate" $executor $null | Out-Null
+    } catch { Write-Verbose "plan $($p.code) already exists" }
+}
+$subscription = Invoke-Gateway POST '/subscription-billing/v1/initiate' $tenant @{ planCode = 'TEAM' }
+Invoke-Gateway PUT "/subscription-billing/v1/$($subscription.id)/control/activate" $tenant $null | Out-Null
 
 Write-Output "Seeded demo tenant. Sign in to the web app with:"
 Write-Output "  Organisation ID: $($org.id)"

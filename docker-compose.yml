@@ -217,6 +217,16 @@ services:
     volumes:
       - anchors:/anchors
 
+  # Journey 9: plans, subscriptions and the entitlement lookup. No money, no events (ADR-030).
+  subscription-billing:
+    <<: *service
+    build: ../micronaut-subscription-billing-service
+    image: thinklab/subscription-billing:local
+    ports: ["8095:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_subscription_billing_db?replicaSet=thinklab-rs0
+
   # Stateless proxy: no database. Its readiness probes party-authentication's liveness.
   gateway:
     build: ../micronaut-platform-gateway-service
@@ -239,6 +249,7 @@ services:
       GATEWAY_IT_TOPOLOGY_GRAPH_URL: http://it-topology-graph:8080
       GATEWAY_CI_TYPE_CATALOG_URL: http://ci-type-catalog:8080
       GATEWAY_COMPLIANCE_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080
+      GATEWAY_SUBSCRIPTION_BILLING_URL: http://subscription-billing:8080
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080
       GATEWAY_AUDIT_ENABLED: "true"
       # Development default so the demo stack works out of the box; set a real secret anywhere that matters (ledger ADR-033).
