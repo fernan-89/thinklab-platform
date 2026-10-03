@@ -71,7 +71,7 @@ sub_id=$(api_body "$sub" | json "['id']")
 check_equal 'a new subscription is TRIALING' TRIALING "$(api_body "$sub" | json "['status']")"
 check_equal 'assets are decided by the subscription plan' SUBSCRIPTION "$(evaluate assets | json "['source']")"
 check_equal 'assets are limited to 500' 500 "$(evaluate assets | json "['limit']")"
-check_equal 'sites are unlimited: allowed, no limit' 'True/None' "$(evaluate sites | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d['allowed']}/{d['limit']}\")")"
+check_equal 'sites are unlimited: allowed, no limit' 'True/None' "$(evaluate sites | python3 -c "import json,sys; d=json.load(sys.stdin); print(f\"{d['allowed']}/{d.get('limit')}\")")"
 check_equal 'a feature set to 0 is not included' False "$(evaluate sso | json "['allowed']")"
 check_equal 'a feature the plan never mentions is not included' False "$(evaluate nonexistent.feature | json "['allowed']")"
 check_status 'activate the subscription' 204 "$(api PUT "$billing/$sub_id/control/activate" "" "$tenant")"
