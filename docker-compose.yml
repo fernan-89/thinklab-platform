@@ -237,6 +237,14 @@ services:
       THINKLAB_EVENTS_ENABLED: "true"
       THINKLAB_EVENTS_NATS_URL: nats://nats:4222
 
+  # ThinkLab web app (Journey 11): static bundle served by nginx, which forwards /api to the gateway.
+  web:
+    build: ../thinklab-web
+    image: thinklab/web:local
+    restart: unless-stopped
+    ports: ["3000:80"]
+    depends_on: [gateway]
+
 volumes:
   mongo-data:
   nats-data:
