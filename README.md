@@ -37,6 +37,9 @@ docker compose up -d --build
 scripts/stack/wait-ready.sh      # waits for /health/readiness on every service
 ```
 
+The web app (`../thinklab-web`) is behind a compose profile so the commands above never need it:
+`docker compose --profile web up -d --build` serves it on http://localhost:3000 (`scripts/e2e/seed-demo.ps1` creates a demo tenant to sign in with).
+
 The images package each service's `installDist` output, so nothing is compiled inside Docker and no
 credential reaches an image. The build needs `micronaut-thinklab-service-kit` from GitHub Packages: export
 `GITHUB_ACTOR` and `GITHUB_TOKEN` (a token with `read:packages`), or publish the kit to your local
