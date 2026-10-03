@@ -98,6 +98,9 @@ jobs:
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/billing-smoke.sh
 
+      - name: Inventory smoke (stock movements, no negative balance under concurrency, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/inventory-smoke.sh
+
       - name: Gateway smoke
         run: thinklab-platform/scripts/e2e/gateway-smoke.sh
 

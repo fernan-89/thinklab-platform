@@ -3,7 +3,7 @@
   Seeds a demo tenant through the gateway so the web app (thinklab-web) has something to show.
 .DESCRIPTION
   Creates one Organisation, a handful of assets in different lifecycle states, a few items waiting in the
-  discovery queue (one already claimed), a small web -> app -> db dependency graph, and the plan catalogue with a TEAM subscription. Prints the
+  discovery queue (one already claimed), a small web -> app -> db dependency graph, a few stock items (two under their reorder level), and the plan catalogue with a TEAM subscription. Prints the
   organisation id to sign in with. Needs the stack from start-local-stack.ps1 (security off).
 #>
 param([string]$Gateway = 'http://localhost:8088')
@@ -60,6 +60,16 @@ $cache = New-Node 'redis-cache' 'ASSET'
 $host1 = New-Node 'esx-host-1' 'ASSET'
 foreach ($e in @(@($web, $app, 'DEPENDS_ON'), @($app, $db, 'DEPENDS_ON'), @($app, $cache, 'DEPENDS_ON'), @($db, $host1, 'HOSTED_ON'), @($cache, $host1, 'HOSTED_ON'))) {
     Invoke-Gateway POST '/it-topology-graph/v1/edge/initiate' $tenant @{ relationshipType = $e[2]; sourceNodeId = $e[0].id; targetNodeId = $e[1].id } | Out-Null
+}
+
+# Stock: consumables, two of them under their reorder level.
+foreach ($s in @(
+    @{ sku = "TONER-85A-$suffix"; name = 'HP 85A toner'; unit = 'unit'; reorderLevel = 3; initialQuantity = 12 },
+    @{ sku = "CABLE-CAT6-$suffix"; name = 'Patch cable Cat6 1m'; unit = 'unit'; reorderLevel = 10; initialQuantity = 4 },
+    @{ sku = "SSD-1TB-$suffix"; name = 'Spare SSD 1 TB'; unit = 'unit'; reorderLevel = 2; initialQuantity = 2 }
+)) {
+    $created = Invoke-Gateway POST '/consumable-inventory/v1/initiate' $tenant $s
+    if ($s.sku -like 'TONER*') { Invoke-Gateway PUT "/consumable-inventory/v1/$($created.id)/movement/issue" $tenant @{ quantity = 2; reason = 'office printers' } | Out-Null }
 }
 
 # Editions: the platform-wide plan catalogue (created once; a second run finds them already there) and a TEAM subscription for the

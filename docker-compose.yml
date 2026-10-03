@@ -227,6 +227,16 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_subscription_billing_db?replicaSet=thinklab-rs0
 
+  # Journey 13 (consumables): stock items, movements and the low-stock list. No money, no events (ADR-032).
+  consumable-inventory:
+    <<: *service
+    build: ../micronaut-consumable-inventory-service
+    image: thinklab/consumable-inventory:local
+    ports: ["8096:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_consumable_inventory_db?replicaSet=thinklab-rs0
+
   # Stateless proxy: no database. Its readiness probes party-authentication's liveness.
   gateway:
     build: ../micronaut-platform-gateway-service
@@ -250,6 +260,7 @@ services:
       GATEWAY_CI_TYPE_CATALOG_URL: http://ci-type-catalog:8080
       GATEWAY_COMPLIANCE_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080
       GATEWAY_SUBSCRIPTION_BILLING_URL: http://subscription-billing:8080
+      GATEWAY_CONSUMABLE_INVENTORY_URL: http://consumable-inventory:8080
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080
       GATEWAY_AUDIT_ENABLED: "true"
       # Development default so the demo stack works out of the box; set a real secret anywhere that matters (ledger ADR-033).

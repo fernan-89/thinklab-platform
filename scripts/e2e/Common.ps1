@@ -47,6 +47,8 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-compliance-audit-ledger-service';         Port = 8094; Db = 'thinklab_compliance_audit_ledger_db' },
     # Journey 9. Independent of the others; no events, no calls to other services (the web app and, later, other services ask it).
     [pscustomobject]@{ Name = 'micronaut-subscription-billing-service';            Port = 8095; Db = 'thinklab_subscription_billing_db' },
+    # Journey 13 (consumables). Independent; no events, no calls to other services.
+    [pscustomobject]@{ Name = 'micronaut-consumable-inventory-service';            Port = 8096; Db = 'thinklab_consumable_inventory_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 
