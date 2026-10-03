@@ -161,7 +161,22 @@ while ((Get-Date) -lt $deadline) {
 }
 [void]$results.Add([pscustomobject]@{ Check = 'a revoked session is rejected platform-wide once the poll catches up'; Expected = 401; Actual = $(if ($propagated) { 401 } else { 200 }); Result = if ($propagated) { 'PASS' } else { 'FAIL' } })
 
-# 8. Rate limiting at the gateway. /health is exempt by design, so this hits a real routed, authenticated
+# 8. CHANGE_FREEZE override needs an elevated role (operation-window ADR-021): the role comes from the verified token, so an
+# OPERATOR cannot waive a freeze by adding the justification field, while an ADMIN can.
+$gwOw = "$GatewayUrl/it-operation-window/v1"
+$assetId = $asset.Body.id
+$freezeStart = (Get-Date).AddHours(40)
+$freeze = Invoke-Api POST "$gwOw/initiate" (Bearer $admin.Session.accessToken) @{ title = 'Secured freeze'; windowType = 'CHANGE_FREEZE'; targetAssetIds = @($assetId); startAt = $freezeStart.ToString('o'); endAt = $freezeStart.AddHours(4).ToString('o') }
+Assert-Status 'admin creates a CHANGE_FREEZE window' $freeze 201
+$deployment = @{ title = 'Emergency fix'; windowType = 'DEPLOYMENT'; targetAssetIds = @($assetId); startAt = $freezeStart.AddHours(1).ToString('o'); endAt = $freezeStart.AddHours(2).ToString('o') }
+Assert-Status 'a plain deployment over the freeze is blocked (409)' (Invoke-Api POST "$gwOw/initiate" (Bearer $admin.Session.accessToken) $deployment) 409
+$override = $deployment + @{ changeFreezeOverrideJustification = 'P1 outage, ECAB approved' }
+$operatorLogin = Invoke-Api POST "$gw/session/initiate" @{} @{ organisationId = $orgId; email = $operator.Email; password = $password }
+Assert-Status 'operator logs in again (the earlier session was revoked by the theft check)' $operatorLogin 200
+Assert-Status 'an OPERATOR cannot waive the freeze (403)' (Invoke-Api POST "$gwOw/initiate" (Bearer $operatorLogin.Body.accessToken) $override) 403
+Assert-Status 'an ADMIN can reserve the deployment over the freeze (201)' (Invoke-Api POST "$gwOw/initiate" (Bearer $admin.Session.accessToken) $override) 201
+
+# 9. Rate limiting at the gateway. /health is exempt by design, so this hits a real routed, authenticated
 # path instead. Only meaningful with a small GATEWAY_RATE_LIMIT_BURST for this run; otherwise informational.
 $limited = 0
 for ($i = 0; $i -lt 30; $i++) {
