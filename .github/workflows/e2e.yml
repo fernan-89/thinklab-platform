@@ -104,6 +104,9 @@ jobs:
       - name: Federation smoke (OIDC sign-in, HttpOnly cookie session, refresh rotation, replay revokes)
         run: thinklab-platform/scripts/e2e/federation-smoke.sh
 
+      - name: Approval chain smoke (two-stage chain, approver inbox, simultaneous votes lose nothing, reject at stage 2)
+        run: thinklab-platform/scripts/e2e/approval-chain-smoke.sh
+
       - name: Plan gating smoke (a plan without the feature is refused at the gateway, plan change and suspension felt)
         run: thinklab-platform/scripts/e2e/plan-gating-smoke.sh
 
