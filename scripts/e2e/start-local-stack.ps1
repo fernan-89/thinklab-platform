@@ -68,6 +68,10 @@ $callerEventsNatsUrl = $env:THINKLAB_EVENTS_NATS_URL
 $env:GATEWAY_AUDIT_ENABLED = 'true'
 # Development-only key (ledger ADR-033): pseudonyms in a local run are not meant to be protected, only to exercise the code path.
 $env:GATEWAY_AUDIT_PSEUDONYM_KEY = 'local-dev-only-pseudonym-key'
+# Chain-head anchoring (ledger ADR-034): development-only key and directory; only the ledger reads these.
+$env:LEDGER_ANCHOR_ENABLED = 'true'
+$env:LEDGER_ANCHOR_KEY = 'local-dev-only-anchor-key'
+$env:LEDGER_ANCHOR_DIRECTORY = (Join-Path $RunDir 'anchors')
 
 foreach ($s in $Services) {
     $dir = Join-Path $Workspace $s.Name

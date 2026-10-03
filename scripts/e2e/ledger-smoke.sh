@@ -126,6 +126,20 @@ check_equal 'the password appears nowhere on the ledger' 'False' "$([[ "$ledger_
 check_equal 'the email appears nowhere on the ledger' 'False' "$([[ "${ledger_dump,,}" == *"${secret_user,,}"* ]] && echo True || echo False)"
 check_equal 'the chain is still valid with the sign-in entry on it' 'True' "$(api_body "$(api GET "$ledger_api/integrity-check/evaluate" "" "$tenant")" | json "['valid']")"
 
+# 7. Anchoring (ledger ADR-034): the head of the chain is published outside the database, and the chain then verifies against it.
+anchor=$(api POST "$ledger_api/anchor/initiate" "" "$tenant")
+check_status 'anchor/initiate publishes the chain head (201)' 201 "$anchor"
+check_equal 'anchor outcome is PUBLISHED' PUBLISHED "$(api_body "$anchor" | json "['status']")"
+current_head=$(api_body "$(api GET "$ledger_api/integrity-check/evaluate" "" "$tenant")" | json "['headSequence']")
+check_equal 'the anchor sits at the current head' "$current_head" "$(api_body "$anchor" | json "['anchor']['headSequence']")"
+again=$(api POST "$ledger_api/anchor/initiate" "" "$tenant")
+check_status 'anchoring again with nothing new answers 200' 200 "$again"
+check_equal 'and reports UNCHANGED' UNCHANGED "$(api_body "$again" | json "['status']")"
+anchored=$(api_body "$(api GET "$ledger_api/integrity-check/evaluate" "" "$tenant")")
+check_equal 'the chain is valid against its anchor' 'True' "$(json "['valid']" <<<"$anchored")"
+check_equal 'one anchor was verified' 1 "$(json "['anchorsVerified']" <<<"$anchored")"
+check_equal 'anchor/retrieve lists the published anchor' 1 "$(api_body "$(api GET "$ledger_api/anchor/retrieve" "" "$tenant")" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)))')"
+
 echo
 echo "Ledger smoke: $checks checks, $failed failed"
 exit $((failed > 0))

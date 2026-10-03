@@ -136,6 +136,19 @@ Assert-Equal 'the email appears nowhere on the ledger' $ledgerDump.ToLower().Con
 $stillValid = Invoke-Api GET "$ledger/integrity-check/evaluate" @{ 'X-Tenant-Id' = $orgResponse.Body.id }
 Assert-Equal 'the chain is still valid with the sign-in entry on it' $stillValid.Body.valid $true
 
+# 7. Anchoring (ledger ADR-034): the head of the chain is published outside the database, and the chain then verifies against it.
+$anchor = Invoke-Api POST "$ledger/anchor/initiate" $tenant
+Assert-Status 'anchor/initiate publishes the chain head (201)' $anchor 201
+Assert-Equal 'anchor outcome is PUBLISHED' $anchor.Body.status 'PUBLISHED'
+Assert-Equal 'the anchor sits at the current head' $anchor.Body.anchor.headSequence ((Invoke-Api GET "$ledger/integrity-check/evaluate" @{ 'X-Tenant-Id' = $orgResponse.Body.id }).Body.headSequence)
+$again = Invoke-Api POST "$ledger/anchor/initiate" $tenant
+Assert-Status 'anchoring again with nothing new answers 200' $again 200
+Assert-Equal 'and reports UNCHANGED' $again.Body.status 'UNCHANGED'
+$anchored = Invoke-Api GET "$ledger/integrity-check/evaluate" @{ 'X-Tenant-Id' = $orgResponse.Body.id }
+Assert-Equal 'the chain is valid against its anchor' $anchored.Body.valid $true
+Assert-Equal 'one anchor was verified' $anchored.Body.anchorsVerified 1
+Assert-Equal 'anchor/retrieve lists the published anchor' @((Invoke-Api GET "$ledger/anchor/retrieve" @{ 'X-Tenant-Id' = $orgResponse.Body.id }).Body).Count 1
+
 $results | Format-Table -AutoSize | Out-String | Write-Output
 $failed = @($results | Where-Object { $_.Result -eq 'FAIL' }).Count
 Write-Output ("Ledger smoke: {0} checks, {1} failed" -f $results.Count, $failed)

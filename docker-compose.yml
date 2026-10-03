@@ -209,6 +209,13 @@ services:
     environment:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_compliance_audit_ledger_db?replicaSet=thinklab-rs0
+      # ADR-034: chain heads are anchored OUTSIDE the ledger database. In production mount a write-once volume (or an object-lock
+      # bucket) at /anchors and set a real LEDGER_ANCHOR_KEY (never stored in the database); these are development defaults.
+      LEDGER_ANCHOR_ENABLED: "true"
+      LEDGER_ANCHOR_DIRECTORY: /anchors
+      LEDGER_ANCHOR_KEY: ${LEDGER_ANCHOR_KEY:-dev-only-anchor-key-change-me}
+    volumes:
+      - anchors:/anchors
 
   # Stateless proxy: no database. Its readiness probes party-authentication's liveness.
   gateway:
@@ -266,3 +273,4 @@ services:
 volumes:
   mongo-data:
   nats-data:
+  anchors:
