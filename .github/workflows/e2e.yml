@@ -53,7 +53,7 @@ jobs:
 
       - name: Start the stack
         working-directory: thinklab-platform
-        run: docker compose --profile sso-test up -d --build
+        run: docker compose --profile sso-test --profile plan-gating up -d --build
 
       - name: Wait until every service is ready
         run: thinklab-platform/scripts/stack/wait-ready.sh 240
@@ -103,6 +103,9 @@ jobs:
 
       - name: Federation smoke (OIDC sign-in, HttpOnly cookie session, refresh rotation, replay revokes)
         run: thinklab-platform/scripts/e2e/federation-smoke.sh
+
+      - name: Plan gating smoke (a plan without the feature is refused at the gateway, plan change and suspension felt)
+        run: thinklab-platform/scripts/e2e/plan-gating-smoke.sh
 
       - name: Gateway smoke
         run: thinklab-platform/scripts/e2e/gateway-smoke.sh

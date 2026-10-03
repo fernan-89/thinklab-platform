@@ -267,12 +267,12 @@ services:
       - ./scripts/e2e/mock-oidc-provider.mjs:/app/mock-oidc-provider.mjs:ro
 
   # Stateless proxy: no database. Its readiness probes party-authentication's liveness.
-  gateway:
+  gateway: &gateway
     build: ../micronaut-platform-gateway-service
     image: thinklab/platform-gateway:local
     restart: unless-stopped
     ports: ["8088:8080"]
-    environment:
+    environment: &gateway-env
       THINKLAB_JWKS_URL: http://party-authentication:8080/party-authentication/v1/.well-known/jwks.json
       THINKLAB_REVOCATION_URL: http://party-authentication:8080/party-authentication/v1/session/revoked
       GATEWAY_PARTY_AUTHENTICATION_URL: http://party-authentication:8080
@@ -297,6 +297,19 @@ services:
       GATEWAY_AUDIT_ENABLED: "true"
       # Development default so the demo stack works out of the box; set a real secret anywhere that matters (ledger ADR-033).
       GATEWAY_AUDIT_PSEUDONYM_KEY: ${GATEWAY_AUDIT_PSEUDONYM_KEY:-dev-only-pseudonym-key-change-me}
+
+  # Plan-based feature gating (gateway ADR-026), kept apart from the main gateway so every other smoke keeps working: a second gateway
+  # with gating ON and a 1 second cache, only for `docker compose --profile plan-gating` (plan-gating-smoke.sh talks to port 8188).
+  gateway-plans:
+    <<: *gateway
+    profiles: ["plan-gating"]
+    ports: ["8188:8080"]
+    environment:
+      <<: *gateway-env
+      GATEWAY_BILLING_URL: http://subscription-billing:8080
+      GATEWAY_ENTITLEMENTS_ENABLED: "true"
+      GATEWAY_ENTITLEMENTS_CACHE_TTL: 1s
+      GATEWAY_AUDIT_ENABLED: "false"
 
   # Consumes party-authentication's user.initiated events and sends the welcome notification.
   notification-dispatch:
