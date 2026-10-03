@@ -143,6 +143,34 @@ collision_schedule=$(api PUT "$chg_api/$collision_id/schedule" "{\"plannedStart\
 check_status "schedule collides with the first change's window (409)" 409 "$collision_schedule"
 check_equal 'collision error_code is ERR-CHG-00409' ERR-CHG-00409 "$(api_body "$collision_schedule" | json "['error_code']")"
 
+# 5. CHANGE_FREEZE override (ADR-034 of change-management, ADR-020 of operation-window): an ECAB-approved
+#    EMERGENCY change may be reserved over an active CHANGE_FREEZE, a plain schedule is still blocked, and an
+#    override on a non-EMERGENCY change is refused before any window is reserved.
+ow_api="${OPERATION_WINDOW_URL:-http://localhost:8084}/it-operation-window/v1"
+iso_in() { python3 -c "import datetime; print((datetime.datetime.now(datetime.timezone.utc)+datetime.timedelta(hours=$1)).isoformat())"; }
+freeze_response=$(api POST "$ow_api/initiate" "{\"title\":\"Year-end freeze\",\"windowType\":\"CHANGE_FREEZE\",\"targetAssetIds\":[\"$asset_id\"],\"startAt\":\"$(iso_in 30)\",\"endAt\":\"$(iso_in 34)\"}" "$tenant")
+check_status 'CHANGE_FREEZE window created' 201 "$freeze_response"
+
+freeze_change=$(api POST "$chg_api/initiate" "{\"requesterId\":\"$requester_id\",\"title\":\"Emergency during freeze\",\"description\":\"P1 outage\",\"changeType\":\"EMERGENCY\",\"targetAssetIds\":[\"$asset_id\"]}" "$tenant")
+check_status 'EMERGENCY change initiated for the freeze check' 201 "$freeze_change"
+freeze_change_id=$(api_body "$freeze_change" | json "['id']")
+check_status 'control/submit' 204 "$(api PUT "$chg_api/$freeze_change_id/control/submit")"
+check_status 'assess' 204 "$(api PUT "$chg_api/$freeze_change_id/assess" '{"riskLevel":"HIGH","impactLevel":"HIGH"}')"
+check_status 'route-for-approval (ASSESSED -> ECAB_REVIEW)' 204 "$(api PUT "$chg_api/$freeze_change_id/route-for-approval")"
+ecab_approve=$(api PUT "$chg_api/$freeze_change_id/approval/capture" '{"outcome":"APPROVE","comment":"Emergency approved"}' "X-Executor: $ecab_approver_1")
+check_equal 'a single ECAB approval makes the EMERGENCY change APPROVED' APPROVED "$(api_body "$ecab_approve" | json "['status']")"
+
+freeze_plan="\"plannedStart\":\"$(iso_in 31)\",\"plannedEnd\":\"$(iso_in 33)\""
+blocked=$(api PUT "$chg_api/$freeze_change_id/schedule" "{$freeze_plan}")
+check_status 'schedule over the CHANGE_FREEZE without an override is blocked (409)' 409 "$blocked"
+check_equal 'blocked error_code is ERR-CHG-00409' ERR-CHG-00409 "$(api_body "$blocked" | json "['error_code']")"
+
+check_status 'schedule over the CHANGE_FREEZE with an override succeeds (204)' 204 "$(api PUT "$chg_api/$freeze_change_id/schedule" "{$freeze_plan,\"freezeOverrideJustification\":\"P1 outage, ECAB approved\"}")"
+check_equal 'the overriding change is SCHEDULED' SCHEDULED "$(api_body "$(api GET "$chg_api/$freeze_change_id/retrieve")" | json "['status']")"
+
+check_status 'an override on a non-EMERGENCY change is refused (400)' 400 "$(api PUT "$chg_api/$collision_id/schedule" "{\"plannedStart\":\"$planned_start\",\"plannedEnd\":\"$planned_end\",\"freezeOverrideJustification\":\"not an emergency\"}")"
+
+
 echo
 echo "Change management smoke: $checks checks, $failed failed"
 exit $((failed > 0))

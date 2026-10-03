@@ -23,6 +23,7 @@ param(
     [string]$OrgUrl = 'http://localhost:8081',
     [string]$AssetUrl = 'http://localhost:8083',
     [string]$ChangeManagementUrl = 'http://localhost:8086',
+    [string]$OperationWindowUrl = 'http://localhost:8084',
     [string]$PoliciesFile = (Join-Path $PSScriptRoot '..\..\.e2e\change-management-policies.json')
 )
 
@@ -141,6 +142,35 @@ Assert-Status 'route-for-approval (STANDARD, pre-approved)' (Invoke-Api PUT "$ch
 $collisionSchedule = Invoke-Api PUT "$chg/$collisionId/schedule" $executorHeader @{ plannedStart = $plannedStart; plannedEnd = $plannedEnd }
 Assert-Status 'schedule collides with the first change''s window (409)' $collisionSchedule 409
 Assert-Equal 'collision error_code is ERR-CHG-00409' $collisionSchedule.Body.error_code 'ERR-CHG-00409'
+
+# 5. CHANGE_FREEZE override (ADR-034 of change-management, ADR-020 of operation-window): an ECAB-approved
+#    EMERGENCY change may be reserved over an active CHANGE_FREEZE, a plain schedule is still blocked, and an
+#    override on a non-EMERGENCY change is refused before any window is reserved.
+$ow = "$OperationWindowUrl/it-operation-window/v1"
+$freezeStart = (Get-Date).AddHours(30)
+$freezeResponse = Invoke-Api POST "$ow/initiate" $tenantAndExecutor @{ title = 'Year-end freeze'; windowType = 'CHANGE_FREEZE'; targetAssetIds = @($assetId); startAt = $freezeStart.ToString('o'); endAt = $freezeStart.AddHours(4).ToString('o') }
+Assert-Status 'CHANGE_FREEZE window created' $freezeResponse 201
+
+$freezeChange = Invoke-Api POST "$chg/initiate" $tenantAndExecutor @{ requesterId = $requesterId; title = 'Emergency during freeze'; description = 'P1 outage'; changeType = 'EMERGENCY'; targetAssetIds = @($assetId) }
+Assert-Status 'EMERGENCY change initiated for the freeze check' $freezeChange 201
+$freezeChangeId = $freezeChange.Body.id
+Assert-Status 'control/submit' (Invoke-Api PUT "$chg/$freezeChangeId/control/submit" $executorHeader) 204
+Assert-Status 'assess' (Invoke-Api PUT "$chg/$freezeChangeId/assess" $executorHeader @{ riskLevel = 'HIGH'; impactLevel = 'HIGH' }) 204
+Assert-Status 'route-for-approval (ASSESSED -> ECAB_REVIEW)' (Invoke-Api PUT "$chg/$freezeChangeId/route-for-approval" $executorHeader) 204
+$ecabApprove = Invoke-Api PUT "$chg/$freezeChangeId/approval/capture" @{ 'X-Executor' = $ecabApprovers[0] } @{ outcome = 'APPROVE'; comment = 'Emergency approved' }
+Assert-Equal 'a single ECAB approval makes the EMERGENCY change APPROVED' $ecabApprove.Body.status 'APPROVED'
+
+$freezePlan = @{ plannedStart = $freezeStart.AddHours(1).ToString('o'); plannedEnd = $freezeStart.AddHours(3).ToString('o') }
+$blocked = Invoke-Api PUT "$chg/$freezeChangeId/schedule" $executorHeader $freezePlan
+Assert-Status 'schedule over the CHANGE_FREEZE without an override is blocked (409)' $blocked 409
+Assert-Equal 'blocked error_code is ERR-CHG-00409' $blocked.Body.error_code 'ERR-CHG-00409'
+
+$overridden = Invoke-Api PUT "$chg/$freezeChangeId/schedule" $executorHeader ($freezePlan + @{ freezeOverrideJustification = 'P1 outage, ECAB approved' })
+Assert-Status 'schedule over the CHANGE_FREEZE with an override succeeds (204)' $overridden 204
+Assert-Equal 'the overriding change is SCHEDULED' (Invoke-Api GET "$chg/$freezeChangeId/retrieve" $executorHeader).Body.status 'SCHEDULED'
+
+$refused = Invoke-Api PUT "$chg/$collisionId/schedule" $executorHeader (@{ plannedStart = $plannedStart; plannedEnd = $plannedEnd; freezeOverrideJustification = 'not an emergency' })
+Assert-Status 'an override on a non-EMERGENCY change is refused (400)' $refused 400
 
 $results | Format-Table -AutoSize | Out-String | Write-Output
 $failed = @($results | Where-Object { $_.Result -eq 'FAIL' }).Count
