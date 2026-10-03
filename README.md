@@ -25,6 +25,7 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | compliance-audit-ledger | 8094 | `micronaut-compliance-audit-ledger-service` |
 | subscription-billing | 8095 | `micronaut-subscription-billing-service` |
 | consumable-inventory | 8096 | `micronaut-consumable-inventory-service` |
+| identity-federation | 8097 | `micronaut-identity-federation-service` |
 
 Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
 transactional outbox needs) and NATS JetStream (the event backbone: party-authentication publishes
@@ -79,6 +80,7 @@ With the stack up (either way):
 | `scripts/e2e/ledger-smoke.sh` (`ledger-smoke.ps1`) | the gateway records every mutating request on the compliance ledger and the hash chain verifies, anchoring included |
 | `scripts/e2e/billing-smoke.sh` (`billing-smoke.ps1`) | plans, subscriptions and entitlements through the gateway (limits, plan change, grace period, suspension, one subscription per organisation), every subscription mutation recorded on the ledger |
 | `scripts/e2e/inventory-smoke.sh` (`inventory-smoke.ps1`) | stock items and movements through the gateway: the balance never goes below zero even with eight concurrent issues against five units, the reorder-level flag and low-stock list follow the balance, every stock mutation recorded on the ledger |
+| `scripts/e2e/federation-smoke.sh` (`federation-smoke.ps1`) | single sign-on against an OIDC provider double (`--profile sso-test`): sign-in only for pre-linked people, state replay refused, refresh token only in an HttpOnly cookie, rotation, replay of an old cookie revokes the session, auto-provision gives VIEWER only, secrets never in answers |
 | `scripts/e2e/gateway-smoke.sh` | the gateway routes to each upstream API |
 | `scripts/e2e/secured-smoke.ps1` | the security stack (tokens, JWKS, revocation) with `THINKLAB_SECURITY_ENABLED=true` |
 

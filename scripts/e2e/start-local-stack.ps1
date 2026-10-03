@@ -72,6 +72,11 @@ $env:GATEWAY_AUDIT_PSEUDONYM_KEY = 'local-dev-only-pseudonym-key'
 $env:LEDGER_ANCHOR_ENABLED = 'true'
 $env:LEDGER_ANCHOR_KEY = 'local-dev-only-anchor-key'
 $env:LEDGER_ANCHOR_DIRECTORY = (Join-Path $RunDir 'anchors')
+# Federated sign-in (identity-federation, gateway ADR-025): the refresh cookie must work over plain http locally, and the federation
+# service resolves the client secret named by a provider from the environment. THINKLAB_MOCK_OIDC_SECRET is the secret of the OIDC
+# provider double the federation smoke starts (scripts/e2e/mock-oidc-provider.mjs) - a development value, not a real secret.
+$env:GATEWAY_SESSION_COOKIE_SECURE = 'false'
+$env:THINKLAB_MOCK_OIDC_SECRET = 'mock-client-secret'
 
 foreach ($s in $Services) {
     $dir = Join-Path $Workspace $s.Name

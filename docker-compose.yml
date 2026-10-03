@@ -237,6 +237,35 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_consumable_inventory_db?replicaSet=thinklab-rs0
 
+  # Journey 13b: OIDC sign-in through the organisation's own identity provider. It authenticates the person, then asks
+  # party-authentication to open the session (one issuer). The client secret is NEVER stored: a provider names an environment variable.
+  identity-federation:
+    <<: *service
+    build: ../micronaut-identity-federation-service
+    image: thinklab/identity-federation:local
+    ports: ["8097:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_identity_federation_db?replicaSet=thinklab-rs0
+      PARTY_AUTHENTICATION_SERVICE_URL: http://party-authentication:8080
+      THINKLAB_FEDERATION_REDIRECT_URI: ${THINKLAB_FEDERATION_REDIRECT_URI:-http://localhost:3000/api/identity-federation/v1/login/callback}
+      # The OIDC provider double (profile sso-test) is plain http on this host name; a real deployment leaves this empty.
+      THINKLAB_FEDERATION_INSECURE_HOSTS: mock-oidc
+      # The secret of the provider double. A real provider's secret is provided the same way under the variable name its record names.
+      THINKLAB_MOCK_OIDC_SECRET: ${THINKLAB_MOCK_OIDC_SECRET:-mock-client-secret}
+
+  # TEST DOUBLE, never part of a real deployment (profile sso-test): a minimal OpenID Connect provider for the federation smoke.
+  mock-oidc:
+    profiles: ["sso-test"]
+    image: node:22-alpine
+    command: ["node", "/app/mock-oidc-provider.mjs"]
+    ports: ["9000:9000"]
+    environment:
+      MOCK_OIDC_ISSUER: http://mock-oidc:9000
+      MOCK_OIDC_CLIENT_SECRET: ${THINKLAB_MOCK_OIDC_SECRET:-mock-client-secret}
+    volumes:
+      - ./scripts/e2e/mock-oidc-provider.mjs:/app/mock-oidc-provider.mjs:ro
+
   # Stateless proxy: no database. Its readiness probes party-authentication's liveness.
   gateway:
     build: ../micronaut-platform-gateway-service
@@ -261,6 +290,9 @@ services:
       GATEWAY_COMPLIANCE_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080
       GATEWAY_SUBSCRIPTION_BILLING_URL: http://subscription-billing:8080
       GATEWAY_CONSUMABLE_INVENTORY_URL: http://consumable-inventory:8080
+      GATEWAY_IDENTITY_FEDERATION_URL: http://identity-federation:8080
+      # Plain-http compose stack: the refresh cookie cannot be Secure here (set true behind https). Path is as the browser sees it.
+      GATEWAY_SESSION_COOKIE_SECURE: "false"
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080
       GATEWAY_AUDIT_ENABLED: "true"
       # Development default so the demo stack works out of the box; set a real secret anywhere that matters (ledger ADR-033).

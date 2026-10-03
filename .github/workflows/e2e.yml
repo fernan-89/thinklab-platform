@@ -53,7 +53,7 @@ jobs:
 
       - name: Start the stack
         working-directory: thinklab-platform
-        run: docker compose up -d --build
+        run: docker compose --profile sso-test up -d --build
 
       - name: Wait until every service is ready
         run: thinklab-platform/scripts/stack/wait-ready.sh 240
@@ -100,6 +100,9 @@ jobs:
 
       - name: Inventory smoke (stock movements, no negative balance under concurrency, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/inventory-smoke.sh
+
+      - name: Federation smoke (OIDC sign-in, HttpOnly cookie session, refresh rotation, replay revokes)
+        run: thinklab-platform/scripts/e2e/federation-smoke.sh
 
       - name: Gateway smoke
         run: thinklab-platform/scripts/e2e/gateway-smoke.sh
