@@ -95,7 +95,7 @@ jobs:
       - name: Ledger smoke (gateway records every mutation, hash chain verifies)
         run: thinklab-platform/scripts/e2e/ledger-smoke.sh
 
-      - name: Anchor store smoke (object-lock bucket: the anchor cannot be removed, a plain delete does not hide it)
+      - name: Anchor store smoke (object-lock bucket, the anchor cannot be removed, a plain delete does not hide it)
         run: thinklab-platform/scripts/e2e/anchor-store-smoke.sh
 
       - name: Investigation smoke (pseudonym lookup for a known person, recorded before it is disclosed)
