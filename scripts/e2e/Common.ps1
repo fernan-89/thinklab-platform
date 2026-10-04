@@ -51,6 +51,8 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-consumable-inventory-service';            Port = 8096; Db = 'thinklab_consumable_inventory_db' },
     # Journey 13b. Calls party-authentication synchronously at sign-in time (never at startup), so list order is only cosmetic.
     [pscustomobject]@{ Name = 'micronaut-identity-federation-service';             Port = 8097; Db = 'thinklab_identity_federation_db' },
+    # Journey 12 (ITSM core), incidents. Independent: only the hash registry for sovereign ids; no events, no calls to other services.
+    [pscustomobject]@{ Name = 'micronaut-it-incident-management-service';           Port = 8098; Db = 'thinklab_it_incident_management_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 

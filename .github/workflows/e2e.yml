@@ -101,6 +101,9 @@ jobs:
       - name: Investigation smoke (pseudonym lookup for a known person, recorded before it is disclosed)
         run: thinklab-platform/scripts/e2e/investigation-smoke.sh
 
+      - name: Incident smoke (derived priority, lifecycle and SLA, requester self-service, a race, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/incident-smoke.sh
+
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/billing-smoke.sh
 
