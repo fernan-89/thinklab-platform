@@ -106,6 +106,9 @@ approval_id=$(json "['approvalRequestId']" <<<"$waiting")
 check_equal 'the request waits for approval and carries the approval request id' 'PENDING_APPROVAL/True' "$(python3 -c "import json,sys; d=json.load(sys.stdin); print('%s/%s' % (d['status'], bool(d.get('approvalRequestId'))))" <<<"$waiting")"
 check_equal 'the first approver has it in their inbox on workflow-approval' 1 "$(api_body "$(api GET "$wf/retrieve?pendingFor=$lead" "" "$tenant")" | python3 -c "import json,sys; print(sum(1 for a in json.load(sys.stdin) if a['id']=='$approval_id'))")"
 check_equal 'fulfilment cannot start before approval (409)' 409 "$(st PUT "$srq/$wid/control/start-fulfilment")"
+stranger=$(decide "$wid" "$(uuid)" APPROVE)
+check_equal 'an approver who is not eligible is told why (409 ERR-SRQ-00409, not a generic 500)' '409/ERR-SRQ-00409' "$(api_status "$stranger")/$(api_body "$stranger" | json "['error_code']")"
+check_equal 'and the request is still waiting' PENDING_APPROVAL "$(field "['status']" "$wid")"
 first=$(decide "$wid" "$lead" APPROVE)
 check_equal 'the first stage approving leaves the request waiting (the chain has a stage left)' '200/PENDING_APPROVAL' "$(api_status "$first")/$(api_body "$first" | json "['status']")"
 last=$(decide "$wid" "$sec_a" APPROVE)

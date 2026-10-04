@@ -116,6 +116,9 @@ Assert-Equal 'the request waits for approval and carries the approval request id
 $approvalId = $waiting.Body.approvalRequestId
 Assert-Equal 'the first approver has it in their inbox on workflow-approval' (@((Invoke-Api GET "$wf/retrieve?pendingFor=$lead" @{ 'X-Tenant-Id' = $tenantId }).Body | Where-Object { $_.id -eq $approvalId }).Count) 1
 Assert-Equal 'fulfilment cannot start before approval (409)' (Invoke-Api PUT "$srq/$wid/control/start-fulfilment" $staff).Status 409
+$stranger = Decide $wid ([guid]::NewGuid().ToString()) 'APPROVE'
+Assert-Equal 'an approver who is not eligible is told why (409 ERR-SRQ-00409, not a generic 500)' "$($stranger.Status)/$($stranger.Body.error_code)" '409/ERR-SRQ-00409'
+Assert-Equal 'and the request is still waiting' (Get-Request $wid).status 'PENDING_APPROVAL'
 $firstStage = Decide $wid $lead 'APPROVE'
 Assert-Equal 'the first stage approving leaves the request waiting (the chain has a stage left)' "$($firstStage.Status)/$($firstStage.Body.status)" '200/PENDING_APPROVAL'
 $lastStage = Decide $wid $secA 'APPROVE'
