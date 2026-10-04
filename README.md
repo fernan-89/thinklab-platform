@@ -1,3 +1,4 @@
+| `scripts/e2e/knowledge-base-smoke.sh` (`knowledge-base-smoke.ps1`) | the knowledge base through the gateway (knowledge-base ADR-030..033): an article linked to a real problem and found by problem, keyword and free text (MongoDB text index), review where nobody publishes their own article, versions (a new draft of the same key; publishing it retires the older one), a REQUESTER reads only published public articles without the people and links, a race between two reviewers where exactly one wins, every mutation (the refused ones too) recorded on the ledger |
 | `scripts/e2e/problem-smoke.sh` (`problem-smoke.ps1`) | problem management through the gateway (problem ADR-030..033): a problem linked to a real incident and found from the problem side, the lifecycle with a known error that needs both a root cause and a workaround, reopen clearing the resolution, staff only (a REQUESTER gets 403), a race between two people, every mutation (the refused ones too) recorded on the ledger |
 | `scripts/e2e/service-request-smoke.sh` (`service-request-smoke.ps1`) | the service catalog and requests through the gateway (service-request ADR-030..034): the catalog lifecycle and unique code, a request with no approval run to CLOSED with SLA judged when read, a request whose approval is a two-stage chain on workflow-approval (released by the last stage, ended by a rejection, withdrawn when cancelled), a REQUESTER sees only their own requests and no internal notes and cannot do staff actions (403), a race between two people, every mutation (the refused ones too) recorded on the ledger |
 # ThinkLab Platform
@@ -31,6 +32,7 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | it-incident-management | 8098 | `micronaut-it-incident-management-service` |
 | it-service-request | 8099 | `micronaut-it-service-request-service` |
 | it-problem-management | 8100 | `micronaut-it-problem-management-service` |
+| it-knowledge-base | 8101 | `micronaut-it-knowledge-base-service` |
 
 Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
 transactional outbox needs) and NATS JetStream (the event backbone: party-authentication publishes

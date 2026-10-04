@@ -110,6 +110,9 @@ jobs:
       - name: Problem smoke (a problem that explains a real incident, the known error, staff only, a race, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/problem-smoke.sh
 
+      - name: Knowledge base smoke (a linked article found by text, review by another person, versions, two audiences, a race, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/knowledge-base-smoke.sh
+
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/billing-smoke.sh
 

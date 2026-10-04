@@ -57,6 +57,8 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-it-service-request-service';            Port = 8099; Db = 'thinklab_it_service_request_db' },
     # Journey 12, problems. Independent: only the hash registry for sovereign ids; no events, no calls to other services.
     [pscustomobject]@{ Name = 'micronaut-it-problem-management-service';        Port = 8100; Db = 'thinklab_it_problem_management_db' },
+    # Journey 12, knowledge base. Independent: only the hash registry for sovereign ids; no events, no calls to other services.
+    [pscustomobject]@{ Name = 'micronaut-it-knowledge-base-service';            Port = 8101; Db = 'thinklab_it_knowledge_base_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 

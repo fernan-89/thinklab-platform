@@ -22,6 +22,7 @@ THINKLAB_SERVICES=(
   "micronaut-it-incident-management-service|it-incident-management|8098"
   "micronaut-it-service-request-service|it-service-request|8099"
   "micronaut-it-problem-management-service|it-problem-management|8100"
+  "micronaut-it-knowledge-base-service|it-knowledge-base|8101"
   "micronaut-ci-type-catalog-service|ci-type-catalog|8093"
 )
 PLATFORM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
