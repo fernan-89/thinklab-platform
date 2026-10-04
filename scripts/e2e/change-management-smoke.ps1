@@ -165,8 +165,15 @@ $blocked = Invoke-Api PUT "$chg/$freezeChangeId/schedule" $executorHeader $freez
 Assert-Status 'schedule over the CHANGE_FREEZE without an override is blocked (409)' $blocked 409
 Assert-Equal 'blocked error_code is ERR-CHG-00409' $blocked.Body.error_code 'ERR-CHG-00409'
 
-$overridden = Invoke-Api PUT "$chg/$freezeChangeId/schedule" $executorHeader ($freezePlan + @{ freezeOverrideJustification = 'P1 outage, ECAB approved' })
-Assert-Status 'schedule over the CHANGE_FREEZE with an override succeeds (204)' $overridden 204
+# Who may waive a freeze (change management ADR-036): an ADMIN/SERVICE, or anyone on the ECAB. Security is off here, so the role is
+# whatever the caller states (X-Role); an OPERATOR who is not on the ECAB is refused, an OPERATOR who is on it may.
+$override = $freezePlan + @{ freezeOverrideJustification = 'P1 outage, ECAB approved' }
+$outsider = Invoke-Api PUT "$chg/$freezeChangeId/schedule" @{ 'X-Executor' = 'ops-not-on-the-ecab'; 'X-Role' = 'OPERATOR' } $override
+Assert-Status 'an OPERATOR who is not on the ECAB cannot waive the freeze (403)' $outsider 403
+Assert-Equal 'refusal error_code is ERR-CHG-00403' $outsider.Body.error_code 'ERR-CHG-00403'
+Assert-Equal 'the refused change is still APPROVED' (Invoke-Api GET "$chg/$freezeChangeId/retrieve" $executorHeader).Body.status 'APPROVED'
+$overridden = Invoke-Api PUT "$chg/$freezeChangeId/schedule" @{ 'X-Executor' = $ecabApprovers[0]; 'X-Role' = 'OPERATOR' } $override
+Assert-Status 'an OPERATOR who sits on the ECAB can waive the freeze (204)' $overridden 204
 Assert-Equal 'the overriding change is SCHEDULED' (Invoke-Api GET "$chg/$freezeChangeId/retrieve" $executorHeader).Body.status 'SCHEDULED'
 
 $refused = Invoke-Api PUT "$chg/$collisionId/schedule" $executorHeader (@{ plannedStart = $plannedStart; plannedEnd = $plannedEnd; freezeOverrideJustification = 'not an emergency' })

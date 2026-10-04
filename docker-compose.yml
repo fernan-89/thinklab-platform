@@ -200,6 +200,24 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_ci_type_catalog_db?replicaSet=thinklab-rs0
 
+  # ADR-035 of the ledger: the object store the chain-head anchors are published to, with OBJECT LOCK (write once: an anchor cannot be
+  # overwritten or deleted until its retention ends). LocalStack stands in for any S3-compatible store (AWS S3, Ceph...); the bucket is
+  # created WITH Object Lock by scripts/e2e/anchor-store-init.sh when it is ready (that can only be chosen at creation), and the healthcheck
+  # only passes once the bucket exists. In production point LEDGER_ANCHOR_S3_ENDPOINT/BUCKET at a real bucket created with Object Lock.
+  anchor-store:
+    image: localstack/localstack:3.8.1
+    restart: unless-stopped
+    environment:
+      SERVICES: s3
+    ports: ["9100:4566"]
+    volumes:
+      - ./scripts/e2e/anchor-store-init.sh:/etc/localstack/init/ready.d/10-anchor-bucket.sh:ro
+    healthcheck:
+      test: ["CMD", "awslocal", "s3api", "head-bucket", "--bucket", "thinklab-anchors"]
+      interval: 3s
+      timeout: 10s
+      retries: 40
+
   # Journey 8: append-only, hash-chained audit ledger. The gateway appends to it (fire-and-forget, fail-open).
   compliance-audit-ledger:
     <<: *service
@@ -209,13 +227,22 @@ services:
     environment:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_compliance_audit_ledger_db?replicaSet=thinklab-rs0
-      # ADR-034: chain heads are anchored OUTSIDE the ledger database. In production mount a write-once volume (or an object-lock
-      # bucket) at /anchors and set a real LEDGER_ANCHOR_KEY (never stored in the database); these are development defaults.
+      # ADR-034/035: chain heads are anchored OUTSIDE the ledger database, into an object-lock bucket (anchor-store). Set a real
+      # LEDGER_ANCHOR_KEY (never stored in the database; rotate it with LEDGER_ANCHOR_KEY_ID + LEDGER_ANCHOR_PREVIOUS_KEYS_<ID>);
+      # these are development defaults. LEDGER_ANCHOR_SINK=file with LEDGER_ANCHOR_DIRECTORY mounted on a write-once volume still works.
       LEDGER_ANCHOR_ENABLED: "true"
-      LEDGER_ANCHOR_DIRECTORY: /anchors
+      LEDGER_ANCHOR_SINK: s3
       LEDGER_ANCHOR_KEY: ${LEDGER_ANCHOR_KEY:-dev-only-anchor-key-change-me}
-    volumes:
-      - anchors:/anchors
+      LEDGER_ANCHOR_S3_ENDPOINT: http://anchor-store:4566
+      LEDGER_ANCHOR_S3_PATH_STYLE: "true"
+      LEDGER_ANCHOR_S3_BUCKET: thinklab-anchors
+      LEDGER_ANCHOR_S3_ACCESS_KEY: ${ANCHOR_STORE_USER:-test}
+      LEDGER_ANCHOR_S3_SECRET_KEY: ${ANCHOR_STORE_PASSWORD:-test}
+    depends_on:
+      mongo:
+        condition: service_healthy
+      anchor-store:
+        condition: service_healthy
 
   # Journey 9: plans, subscriptions and the entitlement lookup. No money, no events (ADR-030).
   subscription-billing:
@@ -295,6 +322,8 @@ services:
       GATEWAY_SESSION_COOKIE_SECURE: "false"
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080
       GATEWAY_AUDIT_ENABLED: "true"
+      # ADR-027: the pseudonym lookup for investigations (off unless asked for); recorded on the ledger before anything is disclosed.
+      GATEWAY_INVESTIGATION_ENABLED: "true"
       # Development default so the demo stack works out of the box; set a real secret anywhere that matters (ledger ADR-033).
       GATEWAY_AUDIT_PSEUDONYM_KEY: ${GATEWAY_AUDIT_PSEUDONYM_KEY:-dev-only-pseudonym-key-change-me}
 
@@ -340,4 +369,3 @@ services:
 volumes:
   mongo-data:
   nats-data:
-  anchors:

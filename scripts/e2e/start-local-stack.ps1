@@ -66,6 +66,8 @@ $callerEventsEnabled = $env:THINKLAB_EVENTS_ENABLED
 $callerEventsNatsUrl = $env:THINKLAB_EVENTS_NATS_URL
 # The gateway records every mutating request on the compliance ledger (only it reads this; opt-in, fail-open).
 $env:GATEWAY_AUDIT_ENABLED = 'true'
+# The investigation pseudonym lookup (gateway ADR-027), switched on so the investigation smoke can run.
+$env:GATEWAY_INVESTIGATION_ENABLED = 'true'
 # Development-only key (ledger ADR-033): pseudonyms in a local run are not meant to be protected, only to exercise the code path.
 $env:GATEWAY_AUDIT_PSEUDONYM_KEY = 'local-dev-only-pseudonym-key'
 # Chain-head anchoring (ledger ADR-034): development-only key and directory; only the ledger reads these.

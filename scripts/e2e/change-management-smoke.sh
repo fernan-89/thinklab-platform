@@ -165,7 +165,14 @@ blocked=$(api PUT "$chg_api/$freeze_change_id/schedule" "{$freeze_plan}")
 check_status 'schedule over the CHANGE_FREEZE without an override is blocked (409)' 409 "$blocked"
 check_equal 'blocked error_code is ERR-CHG-00409' ERR-CHG-00409 "$(api_body "$blocked" | json "['error_code']")"
 
-check_status 'schedule over the CHANGE_FREEZE with an override succeeds (204)' 204 "$(api PUT "$chg_api/$freeze_change_id/schedule" "{$freeze_plan,\"freezeOverrideJustification\":\"P1 outage, ECAB approved\"}")"
+# Who may waive a freeze (change management ADR-036): an ADMIN/SERVICE, or anyone on the ECAB. Security is off here, so the role is whatever
+# the caller states (X-Role): an OPERATOR who is not on the ECAB is refused, an OPERATOR who is on it may.
+override_body="{$freeze_plan,\"freezeOverrideJustification\":\"P1 outage, ECAB approved\"}"
+outsider=$(api PUT "$chg_api/$freeze_change_id/schedule" "$override_body" 'X-Executor: ops-not-on-the-ecab' 'X-Role: OPERATOR')
+check_status 'an OPERATOR who is not on the ECAB cannot waive the freeze (403)' 403 "$outsider"
+check_equal 'refusal error_code is ERR-CHG-00403' ERR-CHG-00403 "$(api_body "$outsider" | json "['error_code']")"
+check_equal 'the refused change is still APPROVED' APPROVED "$(api_body "$(api GET "$chg_api/$freeze_change_id/retrieve")" | json "['status']")"
+check_status 'an OPERATOR who sits on the ECAB can waive the freeze (204)' 204 "$(api PUT "$chg_api/$freeze_change_id/schedule" "$override_body" "X-Executor: $ecab_approver_1" 'X-Role: OPERATOR')"
 check_equal 'the overriding change is SCHEDULED' SCHEDULED "$(api_body "$(api GET "$chg_api/$freeze_change_id/retrieve")" | json "['status']")"
 
 check_status 'an override on a non-EMERGENCY change is refused (400)' 400 "$(api PUT "$chg_api/$collision_id/schedule" "{\"plannedStart\":\"$planned_start\",\"plannedEnd\":\"$planned_end\",\"freezeOverrideJustification\":\"not an emergency\"}")"
