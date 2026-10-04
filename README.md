@@ -1,3 +1,4 @@
+| `scripts/e2e/service-request-smoke.sh` (`service-request-smoke.ps1`) | the service catalog and requests through the gateway (service-request ADR-030..034): the catalog lifecycle and unique code, a request with no approval run to CLOSED with SLA judged when read, a request whose approval is a two-stage chain on workflow-approval (released by the last stage, ended by a rejection, withdrawn when cancelled), a REQUESTER sees only their own requests and no internal notes and cannot do staff actions (403), a race between two people, every mutation (the refused ones too) recorded on the ledger |
 # ThinkLab Platform
 
 Home of everything that is **not** a single service: the local stack, the end-to-end (E2E) runner,
@@ -27,6 +28,7 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | consumable-inventory | 8096 | `micronaut-consumable-inventory-service` |
 | identity-federation | 8097 | `micronaut-identity-federation-service` |
 | it-incident-management | 8098 | `micronaut-it-incident-management-service` |
+| it-service-request | 8099 | `micronaut-it-service-request-service` |
 
 Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
 transactional outbox needs) and NATS JetStream (the event backbone: party-authentication publishes

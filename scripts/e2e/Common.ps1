@@ -53,6 +53,8 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-identity-federation-service';             Port = 8097; Db = 'thinklab_identity_federation_db' },
     # Journey 12 (ITSM core), incidents. Independent: only the hash registry for sovereign ids; no events, no calls to other services.
     [pscustomobject]@{ Name = 'micronaut-it-incident-management-service';           Port = 8098; Db = 'thinklab_it_incident_management_db' },
+    # Journey 12, service requests. The hash registry for sovereign ids; workflow-approval only at call time, and only for an item with an approval policy.
+    [pscustomobject]@{ Name = 'micronaut-it-service-request-service';            Port = 8099; Db = 'thinklab_it_service_request_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 
