@@ -286,6 +286,16 @@ services:
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_service_request_db?replicaSet=thinklab-rs0
       WORKFLOW_APPROVAL_SERVICE_URL: http://workflow-approval:8080
 
+  # Journey 12 (ITSM core), third service: problems, the cause behind incidents, with the known error as a real state. Staff only.
+  it-problem-management:
+    <<: *service
+    build: ../micronaut-it-problem-management-service
+    image: thinklab/it-problem-management:local
+    ports: ["8100:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_it_problem_management_db?replicaSet=thinklab-rs0
+
   # Journey 13b: OIDC sign-in through the organisation's own identity provider. It authenticates the person, then asks
   # party-authentication to open the session (one issuer). The client secret is NEVER stored: a provider names an environment variable.
   identity-federation:
@@ -342,6 +352,7 @@ services:
       GATEWAY_IDENTITY_FEDERATION_URL: http://identity-federation:8080
       GATEWAY_IT_INCIDENT_MANAGEMENT_URL: http://it-incident-management:8080
       GATEWAY_IT_SERVICE_REQUEST_URL: http://it-service-request:8080
+      GATEWAY_IT_PROBLEM_MANAGEMENT_URL: http://it-problem-management:8080
       # Plain-http compose stack: the refresh cookie cannot be Secure here (set true behind https). Path is as the browser sees it.
       GATEWAY_SESSION_COOKIE_SECURE: "false"
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080

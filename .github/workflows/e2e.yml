@@ -107,6 +107,9 @@ jobs:
       - name: Service request smoke (catalog, approval chain, requester self-service, a race, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/service-request-smoke.sh
 
+      - name: Problem smoke (a problem that explains a real incident, the known error, staff only, a race, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/problem-smoke.sh
+
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/billing-smoke.sh
 
