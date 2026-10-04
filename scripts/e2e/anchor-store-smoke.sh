@@ -55,7 +55,7 @@ for _ in $(seq 1 20); do
 done
 
 # 1. The head is published to the object store.
-anchor=$(api POST "$ledger_api/anchor/initiate" "" "$tenant")
+anchor=$(api POST "$ledger_api/anchor/initiate" "" "$tenant" 'X-Executor: anchor-store-smoke')
 check_equal 'anchor/initiate publishes the chain head (201)' 201 "$(api_status "$anchor")"
 check_equal 'anchor outcome is PUBLISHED' PUBLISHED "$(api_body "$anchor" | json "['status']")"
 versions=$(s3api list-object-versions --bucket "$bucket" --prefix "anchors/$org_id/" --output json)
