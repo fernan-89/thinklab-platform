@@ -52,13 +52,17 @@ $cat = "$srq/catalog"
 $wf = "$GatewayUrl/workflow-approval/v1"
 $tenantId = [guid]::NewGuid().ToString()
 $staffUser = [guid]::NewGuid().ToString(); $staffUser2 = [guid]::NewGuid().ToString()
-$requesterA = [guid]::NewGuid().ToString(); $requesterB = [guid]::NewGuid().ToString()
+$requesterA = [guid]::NewGuid().ToString(); $requesterB = [guid]::NewGuid().ToString(); $requesterC = [guid]::NewGuid().ToString()
 $assignee = [guid]::NewGuid().ToString(); $filedFor = [guid]::NewGuid().ToString()
 $lead = [guid]::NewGuid().ToString(); $secA = [guid]::NewGuid().ToString(); $secB = [guid]::NewGuid().ToString()
 $staff = @{ 'X-Tenant-Id' = $tenantId; 'X-Executor' = $staffUser }
 function AsRequester([string]$User, [string]$Tenant = $tenantId) { @{ 'X-Tenant-Id' = $Tenant; 'X-Executor' = $User; 'X-Role' = 'REQUESTER' } }
 function Get-Request([string]$Id) { (Invoke-Api GET "$srq/$Id/retrieve" $staff).Body }
-function Decide([string]$Id, [string]$Approver, [string]$Outcome) { Invoke-Api PUT "$srq/$Id/approval/capture" @{ 'X-Tenant-Id' = $tenantId; 'X-Executor' = $Approver } @{ outcome = $Outcome } }
+function Decide([string]$Id, [string]$Approver, [string]$Outcome, [string]$Comment = $null) {
+    $body = @{ outcome = $Outcome }
+    if ($Comment) { $body.comment = $Comment }
+    Invoke-Api PUT "$srq/$Id/approval/capture" @{ 'X-Tenant-Id' = $tenantId; 'X-Executor' = $Approver } $body
+}
 function New-Request([string]$ItemId, [hashtable]$Answers) { Invoke-Api POST "$srq/initiate" $staff @{ catalogItemId = $ItemId; answers = $Answers; requesterId = $filedFor } }
 
 # 1. The catalog.
@@ -140,6 +144,30 @@ Assert-Equal 'cancel a request that waits for approval' (Invoke-Api PUT "$srq/$c
 Assert-Equal 'its approval request was withdrawn on workflow-approval' (Invoke-Api GET "$wf/$cancelledApproval/retrieve" $wfTenant).Body.status 'CANCELLED'
 Assert-Equal 'and it left the approver inbox' (@((Invoke-Api GET "$wf/retrieve?pendingFor=$lead" @{ 'X-Tenant-Id' = $tenantId }).Body | Where-Object { $_.id -eq $cancelledApproval }).Count) 0
 
+# 3b. An approver sends a request back with what to fix; the requester edits it and it goes through a NEW approval.
+$ret = Invoke-Api POST "$srq/initiate" (AsRequester $requesterC) @{ catalogItemId = $seat.Body.id; answers = @{ product = 'IDE' } }
+$retId = $ret.Body.id; $firstApproval = $ret.Body.approvalRequestId
+Assert-Equal 'a REQUESTER orders the item that needs approval: it waits' "$($ret.Status)/$($ret.Body.status)" '201/PENDING_APPROVAL'
+Assert-Equal 'a RETURN needs a comment saying what to fix (400)' (Decide $retId $lead 'RETURN').Status 400
+Assert-Equal 'and the request is still waiting' (Get-Request $retId).status 'PENDING_APPROVAL'
+$returned = Decide $retId $lead 'RETURN' 'Say which product and why you need it'
+Assert-Equal 'RETURN sends it back: RETURNED, with the approver comment as the reason' "$($returned.Status)/$($returned.Body.status)/$($returned.Body.returnReason)" '200/RETURNED/Say which product and why you need it'
+Assert-Equal 'the approval on workflow-approval is RETURNED and left the inbox' "$((Invoke-Api GET "$wf/$firstApproval/retrieve" $wfTenant).Body.status)/$(@((Invoke-Api GET "$wf/retrieve?pendingFor=$lead" @{ 'X-Tenant-Id' = $tenantId }).Body | Where-Object { $_.id -eq $firstApproval }).Count)" 'RETURNED/0'
+Assert-Equal 'a decision on a returned request is refused (409)' (Decide $retId $secA 'APPROVE').Status 409
+Assert-Equal 'the REQUESTER sees the reason on their own request' (Invoke-Api GET "$srq/$retId/retrieve" (AsRequester $requesterC)).Body.returnReason 'Say which product and why you need it'
+Assert-Equal 'another requester cannot resubmit it (404)' (Invoke-Api PUT "$srq/$retId/control/resubmit" (AsRequester $requesterB) @{ answers = @{ product = 'CAD' } }).Status 404
+Assert-Equal 'answers the item does not ask are refused (400), nothing is filed' (Invoke-Api PUT "$srq/$retId/control/resubmit" (AsRequester $requesterC) @{ answers = @{ colour = 'red' } }).Status 400
+Assert-Equal 'a request that was not returned cannot be resubmitted (409)' (Invoke-Api PUT "$srq/$wid/control/resubmit" $staff @{ answers = @{ product = 'IDE' } }).Status 409
+$resubmitted = Invoke-Api PUT "$srq/$retId/control/resubmit" (AsRequester $requesterC) @{ answers = @{ product = 'IDE for the data team' } }
+Assert-Equal 'the REQUESTER edits and resubmits: waiting again, the new answers, a NEW approval request' "$($resubmitted.Status)/$($resubmitted.Body.status)/$($resubmitted.Body.answers.product)/$($resubmitted.Body.approvalRequestId -ne $firstApproval)" '200/PENDING_APPROVAL/IDE for the data team/True'
+Assert-Equal 'it is back in the first approver inbox, from stage one' (@((Invoke-Api GET "$wf/retrieve?pendingFor=$lead" @{ 'X-Tenant-Id' = $tenantId }).Body | Where-Object { $_.id -eq $resubmitted.Body.approvalRequestId }).Count) 1
+Assert-Equal 'the first stage approves' (Decide $retId $lead 'APPROVE').Body.status 'PENDING_APPROVAL'
+Assert-Equal 'the second stage approves: APPROVED' (Decide $retId $secB 'APPROVE').Body.status 'APPROVED'
+Assert-Equal 'its trail tells the story' ((@((Invoke-Api GET "$srq/$retId/audit-log/retrieve" $staff).Body | ForEach-Object { $_.action })) -join ',') 'INITIATED,RETURNED,RESUBMITTED,APPROVED'
+$retCancel = Invoke-Api POST "$srq/initiate" (AsRequester $requesterC) @{ catalogItemId = $seat.Body.id; answers = @{ product = 'VM' } }
+Assert-Equal 'staff return another one, which the REQUESTER cancels instead of resubmitting' (Decide $retCancel.Body.id $lead 'RETURN' 'Not enough detail').Body.status 'RETURNED'
+Assert-Equal 'a returned request can be cancelled by its REQUESTER' (Invoke-Api PUT "$srq/$($retCancel.Body.id)/control/cancel" (AsRequester $requesterC)).Status 204
+
 # 4. Self-service.
 $mine = Invoke-Api POST "$srq/initiate" (AsRequester $requesterA) @{ catalogItemId = $laptopId; answers = @{ model = 'X1' }; requesterId = $filedFor }
 $mineId = $mine.Body.id
@@ -155,7 +183,9 @@ Assert-Equal 'another requester gets a 404 for it' (Invoke-Api GET "$srq/$mineId
 Assert-Equal 'another requester cannot comment on it (404)' (Invoke-Api POST "$srq/$mineId/comment/initiate" (AsRequester $requesterB) @{ text = 'hi' }).Status 404
 $denied = Invoke-Api PUT "$srq/$mineId/control/start-fulfilment" (AsRequester $requesterA)
 Assert-Equal 'a REQUESTER cannot start fulfilment (403 ERR-SRQ-00403)' "$($denied.Status)/$($denied.Body.error_code)" '403/ERR-SRQ-00403'
-Assert-Equal 'a REQUESTER cannot cancel (403)' (Invoke-Api PUT "$srq/$mineId/control/cancel" (AsRequester $requesterA)).Status 403
+Assert-Equal 'another requester cannot cancel it (404)' (Invoke-Api PUT "$srq/$mineId/control/cancel" (AsRequester $requesterB)).Status 404
+Assert-Equal 'a REQUESTER cancels their own request (204)' (Invoke-Api PUT "$srq/$mineId/control/cancel" (AsRequester $requesterA)).Status 204
+Assert-Equal 'it is CANCELLED and owes no SLA' "$((Get-Request $mineId).status)/$([bool](Get-Request $mineId).fulfilment)" 'CANCELLED/False'
 Assert-Equal 'a REQUESTER cannot decide an approval (403)' (Invoke-Api PUT "$srq/$mineId/approval/capture" (AsRequester $requesterA) @{ outcome = 'APPROVE' }).Status 403
 Assert-Equal 'a REQUESTER cannot read the audit trail (403)' (Invoke-Api GET "$srq/$mineId/audit-log/retrieve" (AsRequester $requesterA)).Status 403
 Assert-Equal 'another tenant gets a 404 for the request' (Invoke-Api GET "$srq/$mineId/retrieve" @{ 'X-Tenant-Id' = [guid]::NewGuid().ToString(); 'X-Executor' = $staffUser }).Status 404

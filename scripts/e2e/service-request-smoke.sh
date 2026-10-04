@@ -37,7 +37,7 @@ check_equal() {
 is_true() { [[ "$1" == "$2" ]] && echo True || echo False; }
 
 tenant_id=$(uuid)
-staff_user=$(uuid); staff_user2=$(uuid); requester_a=$(uuid); requester_b=$(uuid)
+staff_user=$(uuid); staff_user2=$(uuid); requester_a=$(uuid); requester_b=$(uuid); requester_c=$(uuid)
 assignee=$(uuid); filed_for=$(uuid)
 lead=$(uuid); sec_a=$(uuid); sec_b=$(uuid)
 tenant="X-Tenant-Id: $tenant_id"
@@ -129,6 +129,34 @@ check_equal 'cancel a request that waits for approval' 204 "$(st PUT "$srq/$cid/
 check_equal 'its approval request was withdrawn on workflow-approval' CANCELLED "$(api_body "$(api GET "$wf/$cancelled_approval/retrieve" "" "${wf_tenant[@]}")" | json "['status']")"
 check_equal 'and it left the approver inbox' 0 "$(api_body "$(api GET "$wf/retrieve?pendingFor=$lead" "" "$tenant")" | python3 -c "import json,sys; print(sum(1 for a in json.load(sys.stdin) if a['id']=='$cancelled_approval'))")"
 
+# 3b. An approver sends a request back with what to fix; the requester edits it and it goes through a NEW approval.
+ret=$(rq "$requester_c" POST "$srq/initiate" "{\"catalogItemId\":\"$seat_id\",\"answers\":{\"product\":\"IDE\"}}")
+ret_id=$(api_body "$ret" | json "['id']")
+first_approval=$(api_body "$ret" | json "['approvalRequestId']")
+check_equal 'a REQUESTER orders the item that needs approval: it waits' '201/PENDING_APPROVAL' "$(api_status "$ret")/$(api_body "$ret" | json "['status']")"
+check_equal 'a RETURN needs a comment saying what to fix (400)' 400 "$(api_status "$(decide "$ret_id" "$lead" RETURN)")"
+check_equal 'and the request is still waiting' PENDING_APPROVAL "$(field "['status']" "$ret_id")"
+returned=$(api PUT "$srq/$ret_id/approval/capture" '{"outcome":"RETURN","comment":"Say which product and why you need it"}' "$tenant" "X-Executor: $lead")
+check_equal 'RETURN sends it back: RETURNED, with the approver comment as the reason' '200/RETURNED/Say which product and why you need it' "$(api_status "$returned")/$(api_body "$returned" | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s/%s' % (d['status'], d['returnReason']))")"
+check_equal 'the approval on workflow-approval is RETURNED and left the inbox' 'RETURNED/0' "$(api_body "$(api GET "$wf/$first_approval/retrieve" "" "${wf_tenant[@]}")" | json "['status']")/$(api_body "$(api GET "$wf/retrieve?pendingFor=$lead" "" "$tenant")" | python3 -c "import json,sys; print(sum(1 for a in json.load(sys.stdin) if a['id']=='$first_approval'))")"
+check_equal 'a decision on a returned request is refused (409)' 409 "$(api_status "$(decide "$ret_id" "$sec_a" APPROVE)")"
+check_equal 'the REQUESTER sees the reason on their own request' 'Say which product and why you need it' "$(api_body "$(rq "$requester_c" GET "$srq/$ret_id/retrieve")" | json "['returnReason']")"
+check_equal 'another requester cannot resubmit it (404)' 404 "$(api_status "$(rq "$requester_b" PUT "$srq/$ret_id/control/resubmit" '{"answers":{"product":"CAD"}}')")"
+check_equal 'answers the item does not ask are refused (400), nothing is filed' 400 "$(api_status "$(rq "$requester_c" PUT "$srq/$ret_id/control/resubmit" '{"answers":{"colour":"red"}}')")"
+check_equal 'a request that was not returned cannot be resubmitted (409)' 409 "$(st PUT "$srq/$wid/control/resubmit" '{"answers":{"product":"IDE"}}')"
+resubmitted=$(rq "$requester_c" PUT "$srq/$ret_id/control/resubmit" '{"answers":{"product":"IDE for the data team"}}')
+check_equal 'the REQUESTER edits and resubmits: waiting again, the new answers, a NEW approval request' '200/PENDING_APPROVAL/IDE for the data team/True' \
+  "$(api_status "$resubmitted")/$(api_body "$resubmitted" | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s/%s/%s' % (d['status'], d['answers']['product'], d['approvalRequestId'] != '$first_approval'))")"
+new_approval=$(api_body "$resubmitted" | json "['approvalRequestId']")
+check_equal 'it is back in the first approver inbox, from stage one' 1 "$(api_body "$(api GET "$wf/retrieve?pendingFor=$lead" "" "$tenant")" | python3 -c "import json,sys; print(sum(1 for a in json.load(sys.stdin) if a['id']=='$new_approval'))")"
+check_equal 'the first stage approves' PENDING_APPROVAL "$(api_body "$(decide "$ret_id" "$lead" APPROVE)" | json "['status']")"
+check_equal 'the second stage approves: APPROVED' APPROVED "$(api_body "$(decide "$ret_id" "$sec_b" APPROVE)" | json "['status']")"
+check_equal 'its trail tells the story' 'INITIATED,RETURNED,RESUBMITTED,APPROVED' "$(stb GET "$srq/$ret_id/audit-log/retrieve" | actions)"
+ret_cancel_id=$(api_body "$(rq "$requester_c" POST "$srq/initiate" "{\"catalogItemId\":\"$seat_id\",\"answers\":{\"product\":\"VM\"}}")" | json "['id']")
+api PUT "$srq/$ret_cancel_id/approval/capture" '{"outcome":"RETURN","comment":"Not enough detail"}' "$tenant" "X-Executor: $lead" > /dev/null
+check_equal 'staff return another one, which the REQUESTER cancels instead of resubmitting' RETURNED "$(field "['status']" "$ret_cancel_id")"
+check_equal 'a returned request can be cancelled by its REQUESTER' 204 "$(api_status "$(rq "$requester_c" PUT "$srq/$ret_cancel_id/control/cancel")")"
+
 # 4. Self-service.
 mine=$(rq "$requester_a" POST "$srq/initiate" "{\"catalogItemId\":\"$laptop_id\",\"answers\":{\"model\":\"X1\"},\"requesterId\":\"$filed_for\"}")
 mine_id=$(api_body "$mine" | json "['id']")
@@ -143,7 +171,9 @@ check_equal 'another requester gets a 404 for it' 404 "$(api_status "$(rq "$requ
 check_equal 'another requester cannot comment on it (404)' 404 "$(api_status "$(rq "$requester_b" POST "$srq/$mine_id/comment/initiate" '{"text":"hi"}')")"
 denied=$(rq "$requester_a" PUT "$srq/$mine_id/control/start-fulfilment")
 check_equal 'a REQUESTER cannot start fulfilment (403 ERR-SRQ-00403)' '403/ERR-SRQ-00403' "$(api_status "$denied")/$(api_body "$denied" | json "['error_code']")"
-check_equal 'a REQUESTER cannot cancel (403)' 403 "$(api_status "$(rq "$requester_a" PUT "$srq/$mine_id/control/cancel")")"
+check_equal 'another requester cannot cancel it (404)' 404 "$(api_status "$(rq "$requester_b" PUT "$srq/$mine_id/control/cancel")")"
+check_equal 'a REQUESTER cancels their own request (204)' 204 "$(api_status "$(rq "$requester_a" PUT "$srq/$mine_id/control/cancel")")"
+check_equal 'it is CANCELLED and owes no SLA' 'CANCELLED/True' "$(get_request "$mine_id" | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s/%s' % (d['status'], 'fulfilment' not in d))")"
 check_equal 'a REQUESTER cannot decide an approval (403)' 403 "$(api_status "$(rq "$requester_a" PUT "$srq/$mine_id/approval/capture" '{"outcome":"APPROVE"}')")"
 check_equal 'a REQUESTER cannot read the audit trail (403)' 403 "$(api_status "$(rq "$requester_a" GET "$srq/$mine_id/audit-log/retrieve")")"
 check_equal 'another tenant gets a 404 for the request' 404 "$(api_status "$(api GET "$srq/$mine_id/retrieve" "" "X-Tenant-Id: $(uuid)" "X-Executor: $staff_user")")"
