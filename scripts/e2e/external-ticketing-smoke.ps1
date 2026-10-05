@@ -249,7 +249,7 @@ try {
     Assert-Equal 'and says why' ("$($unsupported[0].detail)" -like '*PROBLEM*') $true
 
     # 8. A provider that is down or refuses.
-    $deadBody = Merge-Body $jiraBody @{ name = 'Jira, nobody home'; baseUrl = 'http://localhost:9199/jira' }
+    $deadBody = Merge-Body $jiraBody @{ name = 'Jira, nobody home'; baseUrl = ($TicketingInternalUrl -replace ':\d+$', ':9199') + '/jira' }
     $dead = (Invoke-Api POST "$ext/connection/initiate" $staff $deadBody).Body.id
     $down = New-Incident 'Provider is down'
     $failedLink = Link-Of $dead 'INCIDENT' $down

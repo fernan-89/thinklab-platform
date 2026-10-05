@@ -232,7 +232,7 @@ check_equal 'an action a problem does not model is a conflict, never forced' CON
 check_equal 'and says why' True "$(python3 -c "import json,sys; print('PROBLEM' in json.load(sys.stdin)['deliveries'][0]['detail'])" <<<"$unsupported")"
 
 # 8. A provider that is down or refuses.
-dead_body=$(merge "$jira_body" '{"name":"Jira, nobody home","baseUrl":"http://localhost:9199/jira"}')
+dead_body=$(merge "$jira_body" "{\"name\":\"Jira, nobody home\",\"baseUrl\":\"${ticketing_internal%:*}:9199/jira\"}")
 dead=$(stb POST "$ext/connection/initiate" "$dead_body" | json "['id']")
 down=$(new_incident 'Provider is down')
 failed_link=$(link "$dead" INCIDENT "$down")
