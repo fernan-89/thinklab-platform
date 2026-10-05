@@ -79,6 +79,14 @@ $env:LEDGER_ANCHOR_DIRECTORY = (Join-Path $RunDir 'anchors')
 # provider double the federation smoke starts (scripts/e2e/mock-oidc-provider.mjs) - a development value, not a real secret.
 $env:GATEWAY_SESSION_COOKIE_SECURE = 'false'
 $env:THINKLAB_MOCK_OIDC_SECRET = 'mock-client-secret'
+# ServiceNow and Jira connector (it-external-ticketing, its ADR-032): a connection names the environment variables that hold the credentials
+# and the webhook token. These are the ones of the ticketing double the connector smoke starts (scripts/e2e/mock-ticketing.mjs) - development
+# values, not real secrets. localhost is allowed over plain http only because that double listens there.
+$env:THINKLAB_MOCK_JIRA_AUTH = 'Basic bW9jay1qaXJhOm1vY2s='
+$env:THINKLAB_MOCK_JIRA_HOOK = 'mock-jira-webhook-token'
+$env:THINKLAB_MOCK_SNOW_AUTH = 'Basic bW9jay1zbm93Om1vY2s='
+$env:THINKLAB_MOCK_SNOW_HOOK = 'mock-snow-webhook-token'
+$env:THINKLAB_EXTERNAL_TICKETING_INSECURE_HOSTS = 'localhost'
 
 foreach ($s in $Services) {
     $dir = Join-Path $Workspace $s.Name

@@ -306,6 +306,39 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_knowledge_base_db?replicaSet=thinklab-rs0
 
+  # Journey 12 (ITSM core), fifth service: the ServiceNow and Jira connector. It reads and acts on incidents, requests and problems through
+  # their own routes. Its credentials are NEVER stored: a connection names environment variables, and these are the ones the test double uses.
+  it-external-ticketing:
+    <<: *service
+    build: ../micronaut-it-external-ticketing-service
+    image: thinklab/it-external-ticketing:local
+    ports: ["8102:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_it_external_ticketing_db?replicaSet=thinklab-rs0
+      INCIDENT_SERVICE_URL: http://it-incident-management:8080
+      SERVICE_REQUEST_SERVICE_URL: http://it-service-request:8080
+      PROBLEM_SERVICE_URL: http://it-problem-management:8080
+      # The ticketing double (profile ticketing-test) is plain http on this host name; a real deployment leaves this empty.
+      THINKLAB_EXTERNAL_TICKETING_INSECURE_HOSTS: mock-ticketing
+      # The credentials and webhook tokens of the double. A real provider's are provided the same way under the variable names its connection names.
+      THINKLAB_MOCK_JIRA_AUTH: ${THINKLAB_MOCK_JIRA_AUTH:-Basic bW9jay1qaXJhOm1vY2s=}
+      THINKLAB_MOCK_JIRA_HOOK: ${THINKLAB_MOCK_JIRA_HOOK:-mock-jira-webhook-token}
+      THINKLAB_MOCK_SNOW_AUTH: ${THINKLAB_MOCK_SNOW_AUTH:-Basic bW9jay1zbm93Om1vY2s=}
+      THINKLAB_MOCK_SNOW_HOOK: ${THINKLAB_MOCK_SNOW_HOOK:-mock-snow-webhook-token}
+
+  # TEST DOUBLE, never part of a real deployment (profile ticketing-test): a Jira and a ServiceNow in one process for the connector smoke.
+  mock-ticketing:
+    profiles: ["ticketing-test"]
+    image: node:22-alpine
+    command: ["node", "/app/mock-ticketing.mjs"]
+    ports: ["9100:9100"]
+    environment:
+      MOCK_TICKETING_JIRA_AUTH: ${THINKLAB_MOCK_JIRA_AUTH:-Basic bW9jay1qaXJhOm1vY2s=}
+      MOCK_TICKETING_SNOW_AUTH: ${THINKLAB_MOCK_SNOW_AUTH:-Basic bW9jay1zbm93Om1vY2s=}
+    volumes:
+      - ./scripts/e2e/mock-ticketing.mjs:/app/mock-ticketing.mjs:ro
+
   # Journey 13b: OIDC sign-in through the organisation's own identity provider. It authenticates the person, then asks
   # party-authentication to open the session (one issuer). The client secret is NEVER stored: a provider names an environment variable.
   identity-federation:
@@ -364,6 +397,7 @@ services:
       GATEWAY_IT_SERVICE_REQUEST_URL: http://it-service-request:8080
       GATEWAY_IT_PROBLEM_MANAGEMENT_URL: http://it-problem-management:8080
       GATEWAY_IT_KNOWLEDGE_BASE_URL: http://it-knowledge-base:8080
+      GATEWAY_IT_EXTERNAL_TICKETING_URL: http://it-external-ticketing:8080
       # Plain-http compose stack: the refresh cookie cannot be Secure here (set true behind https). Path is as the browser sees it.
       GATEWAY_SESSION_COOKIE_SECURE: "false"
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080

@@ -33,6 +33,7 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | it-service-request | 8099 | `micronaut-it-service-request-service` |
 | it-problem-management | 8100 | `micronaut-it-problem-management-service` |
 | it-knowledge-base | 8101 | `micronaut-it-knowledge-base-service` |
+| it-external-ticketing | 8102 | `micronaut-it-external-ticketing-service` |
 
 Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
 transactional outbox needs) and NATS JetStream (the event backbone: party-authentication publishes

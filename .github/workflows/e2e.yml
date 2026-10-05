@@ -53,7 +53,7 @@ jobs:
 
       - name: Start the stack
         working-directory: thinklab-platform
-        run: docker compose --profile sso-test --profile plan-gating up -d --build
+        run: docker compose --profile sso-test --profile ticketing-test --profile plan-gating up -d --build
 
       - name: Wait until every service is ready
         run: thinklab-platform/scripts/stack/wait-ready.sh 240
@@ -112,6 +112,13 @@ jobs:
 
       - name: Knowledge base smoke (a linked article found by text, review by another person, versions, two audiences, a race, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/knowledge-base-smoke.sh
+
+      - name: External ticketing smoke (a real incident linked to a Jira ticket, both directions, the echo ignored, the platform wins, no secret anywhere, a race, recorded on the ledger)
+        env:
+          # The connector reaches the double by its compose name; the double reaches the webhook through the gateway.
+          TICKETING_INTERNAL_URL: http://mock-ticketing:9100
+          WEBHOOK_BASE_URL: http://gateway:8080
+        run: thinklab-platform/scripts/e2e/external-ticketing-smoke.sh
 
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/billing-smoke.sh
