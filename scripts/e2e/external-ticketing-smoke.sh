@@ -5,10 +5,10 @@
 # winning a conflict, the webhook proving its caller, a ServiceNow connection with a real problem, a provider that is down or refuses,
 # disabled connections and detached links, staff only, a race, no secret in any answer, and every mutation on the ledger.
 # The service reaches the double as TICKETING_INTERNAL_URL (http://mock-ticketing:9100), this script as TICKETING_URL
-# (http://localhost:9100); the double reaches the webhook through the gateway as WEBHOOK_BASE_URL (http://gateway:8080).
+# (http://localhost:9190, the compose mapping of 9100); the double reaches the webhook through the gateway as WEBHOOK_BASE_URL (http://gateway:8080).
 set -uo pipefail
 gateway="${GATEWAY_URL:-http://localhost:8088}"
-ticketing_url="${TICKETING_URL:-http://localhost:9100}"
+ticketing_url="${TICKETING_URL:-http://localhost:9190}"
 ticketing_internal="${TICKETING_INTERNAL_URL:-$ticketing_url}"
 webhook_base="${WEBHOOK_BASE_URL:-$gateway}"
 ext="$gateway/it-external-ticketing/v1"

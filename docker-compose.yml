@@ -332,7 +332,7 @@ services:
     profiles: ["ticketing-test"]
     image: node:22-alpine
     command: ["node", "/app/mock-ticketing.mjs"]
-    ports: ["9100:9100"]
+    ports: ["9190:9100"]
     environment:
       MOCK_TICKETING_JIRA_AUTH: ${THINKLAB_MOCK_JIRA_AUTH:-Basic bW9jay1qaXJhOm1vY2s=}
       MOCK_TICKETING_SNOW_AUTH: ${THINKLAB_MOCK_SNOW_AUTH:-Basic bW9jay1zbm93Om1vY2s=}
