@@ -349,6 +349,19 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_health_monitoring_db?replicaSet=thinklab-rs0
 
+  # Journey 14, second service: alerting. Polls the health monitor and opens ONE incident per outage on the incident service; both are reached through
+  # their own routes at request time (no events, no startup dependency). Staff only.
+  it-alerting:
+    <<: *service
+    build: ../micronaut-it-alerting-service
+    image: thinklab/it-alerting:local
+    ports: ["8104:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_it_alerting_db?replicaSet=thinklab-rs0
+      HEALTH_MONITORING_SERVICE_URL: http://it-health-monitoring:8080
+      INCIDENT_SERVICE_URL: http://it-incident-management:8080
+
   # TEST DOUBLE, never part of a real deployment (profile health-test): something for the health monitor to watch, whose answer the smoke controls.
   mock-target:
     profiles: ["health-test"]
@@ -418,6 +431,7 @@ services:
       GATEWAY_IT_KNOWLEDGE_BASE_URL: http://it-knowledge-base:8080
       GATEWAY_IT_EXTERNAL_TICKETING_URL: http://it-external-ticketing:8080
       GATEWAY_IT_HEALTH_MONITORING_URL: http://it-health-monitoring:8080
+      GATEWAY_IT_ALERTING_URL: http://it-alerting:8080
       # Plain-http compose stack: the refresh cookie cannot be Secure here (set true behind https). Path is as the browser sees it.
       GATEWAY_SESSION_COOKIE_SECURE: "false"
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080

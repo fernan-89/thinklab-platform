@@ -64,6 +64,8 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-it-external-ticketing-service';        Port = 8102; Db = 'thinklab_it_external_ticketing_db' },
     # Journey 14, health monitoring. Independent: only the hash registry for sovereign ids. It probes its targets itself (a scheduler in the service), no events.
     [pscustomobject]@{ Name = 'micronaut-it-health-monitoring-service';           Port = 8103; Db = 'thinklab_it_health_monitoring_db' },
+    # Journey 14, alerting. Polls the health monitor and opens an incident on the incident service (their default local ports), no events; needs the hash registry.
+    [pscustomobject]@{ Name = 'micronaut-it-alerting-service';                    Port = 8104; Db = 'thinklab_it_alerting_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 

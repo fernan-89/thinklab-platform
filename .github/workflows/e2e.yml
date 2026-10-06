@@ -126,6 +126,12 @@ jobs:
           TARGET_INTERNAL_HOST: mock-target
         run: thinklab-platform/scripts/e2e/health-monitoring-smoke.sh
 
+      - name: Alerting smoke (an alert and one real incident per outage, the oldest rule decides, four evaluations at once open one, recovery adds an internal note and closes nothing, paused rules, staff only, recorded on the ledger)
+        env:
+          # The monitor reaches the double by its compose name; this script reaches it by the published ports.
+          TARGET_INTERNAL_HOST: mock-target
+        run: thinklab-platform/scripts/e2e/alerting-smoke.sh
+
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/billing-smoke.sh
 
