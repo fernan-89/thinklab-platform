@@ -62,6 +62,8 @@ $script:Services = @(
     # Journey 12, ServiceNow and Jira connector. Reads and acts on the incident, request and problem services at request time (no events,
     # no startup dependency); needs the hash registry for sovereign ids. Its credentials are environment variables it is told the NAMES of.
     [pscustomobject]@{ Name = 'micronaut-it-external-ticketing-service';        Port = 8102; Db = 'thinklab_it_external_ticketing_db' },
+    # Journey 14, health monitoring. Independent: only the hash registry for sovereign ids. It probes its targets itself (a scheduler in the service), no events.
+    [pscustomobject]@{ Name = 'micronaut-it-health-monitoring-service';           Port = 8103; Db = 'thinklab_it_health_monitoring_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 

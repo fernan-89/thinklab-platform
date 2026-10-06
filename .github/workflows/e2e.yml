@@ -53,7 +53,7 @@ jobs:
 
       - name: Start the stack
         working-directory: thinklab-platform
-        run: docker compose --profile sso-test --profile ticketing-test --profile plan-gating up -d --build
+        run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating up -d --build
 
       - name: Wait until every service is ready
         run: thinklab-platform/scripts/stack/wait-ready.sh 240
@@ -119,6 +119,12 @@ jobs:
           TICKETING_INTERNAL_URL: http://mock-ticketing:9100
           WEBHOOK_BASE_URL: http://gateway:8080
         run: thinklab-platform/scripts/e2e/external-ticketing-smoke.sh
+
+      - name: Health monitoring smoke (scheduled probes, a blip is not an outage, recovery, refused and timed out targets, redirects not followed, a race, recorded on the ledger)
+        env:
+          # The monitor reaches the double by its compose name; this script reaches it by the published ports.
+          TARGET_INTERNAL_HOST: mock-target
+        run: thinklab-platform/scripts/e2e/health-monitoring-smoke.sh
 
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/billing-smoke.sh

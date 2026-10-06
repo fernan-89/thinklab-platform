@@ -87,6 +87,8 @@ $env:THINKLAB_MOCK_JIRA_HOOK = 'mock-jira-webhook-token'
 $env:THINKLAB_MOCK_SNOW_AUTH = 'Basic bW9jay1zbm93Om1vY2s='
 $env:THINKLAB_MOCK_SNOW_HOOK = 'mock-snow-webhook-token'
 $env:THINKLAB_EXTERNAL_TICKETING_INSECURE_HOSTS = 'localhost'
+# Health monitoring (it-health-monitoring, its ADR-031): the smoke watches a double on this host, so loopback is allowed here; a real deployment leaves it off.
+$env:THINKLAB_HEALTH_ALLOW_LOOPBACK = 'true'
 
 foreach ($s in $Services) {
     $dir = Join-Path $Workspace $s.Name
