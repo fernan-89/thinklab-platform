@@ -27,6 +27,7 @@ THINKLAB_SERVICES=(
   "micronaut-it-health-monitoring-service|it-health-monitoring|8103"
   "micronaut-it-alerting-service|it-alerting|8104"
   "micronaut-it-backup-registry-service|it-backup-registry|8105"
+  "micronaut-it-patch-registry-service|it-patch-registry|8106"
   "micronaut-ci-type-catalog-service|ci-type-catalog|8093"
 )
 PLATFORM_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
