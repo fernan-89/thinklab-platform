@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Live proof of Journey 14, second service: alerting through the platform gateway (alerting ADR-030..033).
+  Live proof of Journey 14, second service: alerting through the platform gateway (alerting ADR-030..036).
 
 .DESCRIPTION
   Needs the stack up (start-local-stack.ps1 starts it on 8104, routes it through the gateway and turns the ledger recording on). The script
@@ -16,7 +16,10 @@
         opens nothing, and an alert opened earlier is still resolved when its check recovers;
     (6) staff only (a REQUESTER gets 403), another tenant gets a 404 / nothing, a duplicate rule name is refused (409), alerts cannot be
         written by hand;
-    (7) every mutation, including the refused ones, is recorded on the ledger.
+    (7) a flapping check REOPENS its alert instead of opening a new incident (ADR-034), a maintenance window silences it until it is
+        cancelled (ADR-035), and people are told through webhooks, the double's /hook receiver (ADR-036): opened, escalated while the incident is
+        unacknowledged, resolved and reopened, once each, a failing webhook retried without breaking the evaluation, only variable NAMES kept;
+    (8) every mutation, including the refused ones, is recorded on the ledger.
 
     powershell -File .\alerting-smoke.ps1
 #>
@@ -103,9 +106,10 @@ try {
 
     # 1. Rules, and nothing down.
     $ruleAll = New-Rule @{ name = 'Everything'; impact = 'LOW'; urgency = 'LOW'; requesterId = $filedFor }
-    $ruleWeb = New-Rule @{ name = 'Intranet'; checkId = $web; impact = 'HIGH'; urgency = 'HIGH'; requesterId = $filedFor }
-    Assert-Equal 'a rule for every check: 201, ACTIVE' "$($ruleAll.Status)/$($ruleAll.Body.status)/$($ruleAll.Body.checkId)" '201/ACTIVE/'
-    Assert-Equal 'a rule for one check: 201, tied to it' "$($ruleWeb.Status)/$($ruleWeb.Body.checkId)" "201/$web"
+    # The rule for one check never reopens (0), so that the flow below keeps opening a NEW alert per outage; the first keeps the default (30).
+    $ruleWeb = New-Rule @{ name = 'Intranet'; checkId = $web; impact = 'HIGH'; urgency = 'HIGH'; requesterId = $filedFor; reopenWithinMinutes = 0 }
+    Assert-Equal 'a rule for every check: 201, ACTIVE, with the default reopen time (30 minutes)' "$($ruleAll.Status)/$($ruleAll.Body.status)/$($ruleAll.Body.checkId)/$($ruleAll.Body.reopenWithinMinutes)" '201/ACTIVE//30'
+    Assert-Equal 'a rule for one check: 201, tied to it, that never reopens (0)' "$($ruleWeb.Status)/$($ruleWeb.Body.checkId)/$($ruleWeb.Body.reopenWithinMinutes)" "201/$web/0"
     Assert-Equal 'a rule name already in use is refused (409 ERR-ALR-00409)' "$((New-Rule @{ name = 'Everything'; impact = 'LOW'; urgency = 'LOW'; requesterId = $filedFor }).Body.error_code)" 'ERR-ALR-00409'
     Assert-Equal 'a rule must name the requester the incident is filed for (400)' (New-Rule @{ name = 'No requester'; impact = 'LOW'; urgency = 'LOW' }).Status 400
     Assert-Equal 'the rules are listed oldest first' (@((Invoke-Api GET "$alr/rule/retrieve" $staff).Body | ForEach-Object { $_.name }) -join ',') 'Everything,Intranet'
@@ -215,7 +219,116 @@ try {
     Assert-Equal 'an alert cannot be written by hand (404 or 405)' (@(404, 405) -contains (Invoke-Api POST "$alr/initiate" $staff @{ checkId = $web }).Status) $true
     Assert-Equal 'there is no delete (404 or 405)' (@(404, 405) -contains (Invoke-Api DELETE "$alr/rule/$($ruleWeb.Body.id)" $staff).Status) $true
 
-    # 7. The ledger.
+    # 7. A flapping check REOPENS its alert (ADR-034), a window silences it (ADR-035), and people are told through webhooks (ADR-036).
+    # A third check on the TCP listener; its rule names the webhook variables, never an address.
+    function Hooks { @((Invoke-Api GET "$ControlUrl/__mock/hooks").Body) }
+    # Only notices the double ACCEPTED count as delivered (it records the refused ones too, with the status it answered).
+    function Hook-Count([string]$AlertId, [string]$Key) { @(Hooks | Where-Object { $_.status -lt 400 -and $_.body.alertId -eq $AlertId -and "$($_.hook):$($_.body.event)" -eq $Key }).Count }
+    function Refused-Count([string]$AlertId, [string]$Key) { @(Hooks | Where-Object { $_.status -ge 400 -and $_.body.alertId -eq $AlertId -and "$($_.hook):$($_.body.event)" -eq $Key }).Count }
+    function Hook-Body([string]$AlertId, [string]$Key) { @(Hooks | Where-Object { $_.status -lt 400 -and $_.body.alertId -eq $AlertId -and "$($_.hook):$($_.body.event)" -eq $Key } | ForEach-Object { $_.body })[0] }
+    function Cache-Alert { (Alerts "?checkId=$cache")[0] }
+    function Cache-Notice([string]$Key) { @((Cache-Alert).notices | Where-Object { $_.notice -eq $Key })[0] }
+    function Instant([int]$Minutes) { (Get-Date).ToUniversalTime().AddMinutes($Minutes).ToString('yyyy-MM-ddTHH:mm:ssZ') }
+    function Incident-Notes([string]$IncidentId) { $c = @((Get-Incident $IncidentId).comments); "$($c.Count)/$(@($c | Where-Object { -not $_.internal }).Count -eq 0)" }
+
+    Target '/__mock/hooks/reset' @{}; Target '/__mock/hook-status' @{ status = 200 }
+    $cache = (Invoke-Api POST "$hlm/initiate" $staff @{ name = 'Cache'; type = 'TCP'; target = $tcpTarget; intervalSeconds = 3600; timeoutMillis = 1000; failureThreshold = 1 }).Body.id
+    Assert-Equal 'a third check is probed and goes UP' (Run-Check $cache).health 'UP'
+    Assert-Equal 'a rule names a variable, never an address: the address is refused (400)' (New-Rule @{ name = 'By address'; impact = 'LOW'; urgency = 'LOW'; requesterId = $filedFor; notifyTarget = "http://${TargetHost}:$TargetHttpPort/hook/ops" }).Status 400
+    $ruleCache = New-Rule @{ name = 'Cache'; checkId = $cache; impact = 'MEDIUM'; urgency = 'MEDIUM'; requesterId = $filedFor; notifyTarget = 'THINKLAB_ALERT_HOOK_OPS'; escalateTarget = 'THINKLAB_ALERT_HOOK_ONCALL'; escalateAfterMinutes = 1 }
+    Assert-Equal 'a rule with webhook notices and an escalation: only the NAMES are kept, reopen time is the default' "$($ruleCache.Status)/$($ruleCache.Body.notifyTarget)/$($ruleCache.Body.escalateTarget)/$($ruleCache.Body.escalateAfterMinutes)/$($ruleCache.Body.reopenWithinMinutes)" '201/THINKLAB_ALERT_HOOK_OPS/THINKLAB_ALERT_HOOK_ONCALL/1/30'
+    Assert-Equal 'an escalation target without an escalation time is refused (400)' (New-Rule @{ name = 'Half'; impact = 'LOW'; urgency = 'LOW'; requesterId = $filedFor; escalateTarget = 'THINKLAB_ALERT_HOOK_ONCALL' }).Status 400
+
+    # 7a. The outage: an alert, ONE incident, and the opened notice (only the facts: no address, no person).
+    Target '/__mock/tcp' @{ open = $false }
+    Assert-Equal 'the third check goes DOWN' (Run-Check $cache).health 'DOWN'
+    [void](Evaluate)
+    Assert-Equal 'an alert is opened for it' (Wait-Until { @(Alerts "?checkId=$cache").Count -ge 1 } 20) $true
+    $cacheAlert = (Cache-Alert).id
+    $cacheIncident = (Cache-Alert).incidentId
+    Assert-Equal 'it has its incident: the fourth, one per outage' "$([bool]$cacheIncident)/$(@(Incidents).Count)" 'True/4'
+    Assert-Equal 'the people it names are told: an OPENED notice reaches the opened-notice webhook' (Wait-Until { (Hook-Count $cacheAlert 'ops:OPENED') -ge 1 } 20) $true
+    $opened = Hook-Body $cacheAlert 'ops:OPENED'
+    $openedJson = $opened | ConvertTo-Json -Depth 4
+    Assert-Equal 'the notice carries the ids, the check, the fixed error and the severities, and no address' "$($opened.check)/$($opened.incidentId)/$($opened.impact)/$($opened.urgency)/$($opened.event)/$(($openedJson -notmatch 'mock-target') -and ($openedJson -notmatch 'hook'))" "Cache/$cacheIncident/MEDIUM/MEDIUM/OPENED/True"
+    Assert-Equal 'the notice has the text line a chat tool shows' ($opened.text.StartsWith('[ALERT OPENED] Cache is down') -and $opened.text.Contains($cacheIncident)) $true
+    1..3 | ForEach-Object { [void](Evaluate) }
+    Start-Sleep -Seconds 6
+    Assert-Equal 'however many evaluations and rounds run, it is told ONCE' (Hook-Count $cacheAlert 'ops:OPENED') 1
+    $openedNotice = Cache-Notice 'OPENED_0'
+    Assert-Equal 'the alert keeps what came of the notice' "$([bool]$openedNotice.sentAt)/$($openedNotice.attempts)/$([bool]$openedNotice.lastError)" 'True/1/False'
+
+    # 7b. Nobody picks the incident up: after a minute it is ESCALATED to the second webhook, once.
+    Assert-Equal 'the incident is still NEW (nobody acknowledged it)' (Get-Incident $cacheIncident).status 'NEW'
+    Assert-Equal 'after the escalation time an ESCALATED notice reaches the escalation webhook' (Wait-Until { (Hook-Count $cacheAlert 'oncall:ESCALATED') -ge 1 } 120) $true
+    Assert-Equal 'and it says why' ((Hook-Body $cacheAlert 'oncall:ESCALATED').text.Contains('not been acknowledged')) $true
+    [void](Evaluate); Start-Sleep -Seconds 6
+    Assert-Equal 'it is escalated ONCE' (Hook-Count $cacheAlert 'oncall:ESCALATED') 1
+    Assert-Equal 'the escalation went only to the escalation webhook' (Hook-Count $cacheAlert 'ops:ESCALATED') 0
+
+    # 7c. Recovery: RESOLVED, the resolved notice, an INTERNAL note on the incident, the incident not closed.
+    Target '/__mock/tcp' @{ open = $true }
+    Assert-Equal 'the check is UP again' (Run-Check $cache).health 'UP'
+    [void](Evaluate)
+    Assert-Equal 'its alert is RESOLVED' (Wait-Until { (Cache-Alert).status -eq 'RESOLVED' } 20) $true
+    Assert-Equal 'a RESOLVED notice reaches the opened-notice webhook' (Wait-Until { (Hook-Count $cacheAlert 'ops:RESOLVED') -ge 1 } 20) $true
+    Assert-Equal 'the incident got its one internal note and was not closed' "$(Incident-Notes $cacheIncident)/$((Get-Incident $cacheIncident).status)" '1/True/NEW'
+
+    # 7d. The check flaps while a webhook fails: the SAME alert is REOPENED (no new incident, the incident is told) and a failing webhook
+    # breaks nothing: the notice is kept on the alert with a fixed reason and retried.
+    Target '/__mock/hook-status' @{ status = 500 }
+    Target '/__mock/tcp' @{ open = $false }
+    Assert-Equal 'the check is DOWN again, soon after' (Run-Check $cache).health 'DOWN'
+    Assert-Equal 'the evaluation REOPENS the alert (reopened: 1), whatever the webhook does' "$((Evaluate).Body.reopened)" 1
+    $flapped = @(Alerts "?checkId=$cache")
+    Assert-Equal 'it is the same alert, OPEN again, reopened once, with no resolution time' "$($flapped.Count -eq 1 -and $flapped[0].id -eq $cacheAlert)/$($flapped[0].status)/$($flapped[0].reopenCount)/$(-not $flapped[0].resolvedAt)" 'True/OPEN/1/True'
+    Assert-Equal 'no new incident was opened for the flap' @(Incidents).Count 4
+    Assert-Equal 'the incident was told, with a second internal note, and is still the same one' "$(Incident-Notes $cacheIncident)/$((Get-Incident $cacheIncident).status)" '2/True/NEW'
+    Assert-Equal 'the alert trail reads in order' (Actions "$alr/$cacheAlert") 'OPENED,INCIDENT_OPENED,RESOLVED,REOPENED'
+    Assert-Equal 'the failing webhook is kept on the alert: tried, not sent, with a fixed reason that repeats nothing it answered' (Wait-Until { $n = Cache-Notice 'REOPENED_1'; $n -and $n.attempts -ge 1 -and -not $n.sentAt -and "$($n.lastError)".Contains('HTTP 500') } 20) $true
+    Assert-Equal 'the reason is fixed text' (Cache-Notice 'REOPENED_1').lastError 'The notification webhook refused the notice (HTTP 500).'
+    Assert-Equal 'the webhook did receive the refused attempt, and nothing counts as delivered yet' "$(Refused-Count $cacheAlert 'ops:REOPENED')/$(Hook-Count $cacheAlert 'ops:REOPENED')" '1/0'
+    Target '/__mock/hook-status' @{ status = 200 }
+    Assert-Equal 'once the webhook answers, the REOPENED notice is retried (not sooner than 30 seconds later) and gets through' (Wait-Until { [void](Evaluate); (Hook-Count $cacheAlert 'ops:REOPENED') -ge 1 } 90) $true
+    $retried = Cache-Notice 'REOPENED_1'
+    Assert-Equal 'it has two attempts and was sent' "$($retried.attempts -eq 2 -and [bool]$retried.sentAt)" 'True'
+    Assert-Equal 'and it is told once' (Hook-Count $cacheAlert 'ops:REOPENED') 1
+
+    # 7e. A maintenance window silences the check until it is cancelled; a recovery is still recorded.
+    $window = Invoke-Api POST "$alr/window/initiate" $staff @{ name = 'Cache restart'; checkId = $cache; startsAt = (Instant -1); endsAt = (Instant 60) }
+    $windowId = $window.Body.id
+    Assert-Equal 'a window is planned: 201, ACTIVE, for that check' "$($window.Status)/$($window.Body.status)/$($window.Body.checkId)" "201/ACTIVE/$cache"
+    Assert-Equal 'it can be read and listed' "$((Invoke-Api GET "$alr/window/$windowId/retrieve" $staff).Status)/$(@((Invoke-Api GET "$alr/window/retrieve" $staff).Body)[0].id)" "200/$windowId"
+    Target '/__mock/tcp' @{ open = $true }
+    Assert-Equal 'the check recovers during the window' (Run-Check $cache).health 'UP'
+    [void](Evaluate)
+    Assert-Equal 'the recovery is still recorded: the alert is RESOLVED' (Wait-Until { (Cache-Alert).status -eq 'RESOLVED' } 20) $true
+    Target '/__mock/tcp' @{ open = $false }
+    Assert-Equal 'the check is DOWN inside the window' (Run-Check $cache).health 'DOWN'
+    $silent = (Evaluate).Body
+    Assert-Equal 'the evaluation reopens nothing and notifies nobody' "$($silent.opened)/$($silent.reopened)/$($silent.notified)" '0/0/0'
+    Start-Sleep -Seconds 7
+    Assert-Equal 'neither do the scheduler rounds: the alert stays RESOLVED, one alert, still four incidents, the reopened notice not repeated' "$((Cache-Alert).status)/$(@(Alerts "?checkId=$cache").Count)/$(@(Incidents).Count)/$(Hook-Count $cacheAlert 'ops:REOPENED')" 'RESOLVED/1/4/1'
+    $planDenied = Invoke-Api POST "$alr/window/initiate" $asRequester @{ name = 'x'; startsAt = (Instant -1); endsAt = (Instant 5) }
+    Assert-Equal 'a REQUESTER cannot plan a window (403 ERR-ALR-00403)' "$($planDenied.Status)/$($planDenied.Body.error_code)" '403/ERR-ALR-00403'
+    Assert-Equal 'a window that already ended is refused (400)' (Invoke-Api POST "$alr/window/initiate" $staff @{ name = 'Late'; startsAt = (Instant -120); endsAt = (Instant -60) }).Status 400
+    Assert-Equal 'another tenant cannot see the window (404)' (Invoke-Api GET "$alr/window/$windowId/retrieve" $otherTenant).Status 404
+    Assert-Equal 'cancelling it ends the silence at once (204)' (Invoke-Api PUT "$alr/window/$windowId/control/cancel" $staff).Status 204
+    Assert-Equal 'cancelling it twice is an illegal transition (409)' (Invoke-Api PUT "$alr/window/$windowId/control/cancel" $staff).Status 409
+    Assert-Equal 'the very next evaluation reopens the alert' "$((Evaluate).Body.reopened)" 1
+    Assert-Equal 'it is OPEN again, reopened twice, and the notice for that cycle is sent' "$((Cache-Alert).status)/$((Cache-Alert).reopenCount)/$(Wait-Until { (Hook-Count $cacheAlert 'ops:REOPENED') -ge 2 } 20)" 'OPEN/2/True'
+    Assert-Equal 'the window trail reads in order' (Actions "$alr/window/$windowId") 'INITIATED,CANCELLED'
+    Assert-Equal 'there is no delete of a window (404 or 405)' (@(404, 405) -contains (Invoke-Api DELETE "$alr/window/$windowId" $staff).Status) $true
+
+    # 7f. Everything recovers; nothing is left open.
+    Target '/__mock/tcp' @{ open = $true }
+    Assert-Equal 'the check is UP again' (Run-Check $cache).health 'UP'
+    [void](Evaluate)
+    Assert-Equal 'its alert is RESOLVED' (Wait-Until { (Cache-Alert).status -eq 'RESOLVED' } 20) $true
+    Assert-Equal 'nothing is left open' "$(@(Alerts '?status=OPEN').Count)" 0
+    Assert-Equal 'the flaps opened no incident of their own: still one per outage, four in all' @(Incidents).Count 4
+
+    # 8. The ledger.
     $ledger = "$LedgerUrl/compliance-audit-ledger/v1"
     $recorded = 0
     for ($i = 0; $i -lt 20; $i++) {

@@ -89,6 +89,11 @@ $env:THINKLAB_MOCK_SNOW_HOOK = 'mock-snow-webhook-token'
 $env:THINKLAB_EXTERNAL_TICKETING_INSECURE_HOSTS = 'localhost'
 # Health monitoring (it-health-monitoring, its ADR-031): the smoke watches a double on this host, so loopback is allowed here; a real deployment leaves it off.
 $env:THINKLAB_HEALTH_ALLOW_LOOPBACK = 'true'
+# Alerting webhook notices (it-alerting, its ADR-036): the rules name these variables, never the address; they point at the mock-target double on this host,
+# reachable over plain http only because localhost is listed. A real deployment sets https addresses and leaves the list empty.
+$env:THINKLAB_ALERT_HOOK_OPS = 'http://localhost:9200/hook/ops'
+$env:THINKLAB_ALERT_HOOK_ONCALL = 'http://localhost:9200/hook/oncall'
+$env:THINKLAB_ALERTING_INSECURE_HOSTS = 'localhost'
 
 foreach ($s in $Services) {
     $dir = Join-Path $Workspace $s.Name

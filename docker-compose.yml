@@ -361,6 +361,11 @@ services:
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_alerting_db?replicaSet=thinklab-rs0
       HEALTH_MONITORING_SERVICE_URL: http://it-health-monitoring:8080
       INCIDENT_SERVICE_URL: http://it-incident-management:8080
+      # Webhook notices (alerting ADR-036): the rules name these variables, never the address. They point at the test double (profile health-test),
+      # which is reachable over plain http only because its host is listed here; a real deployment sets https addresses and leaves the list empty.
+      THINKLAB_ALERT_HOOK_OPS: http://mock-target:9200/hook/ops
+      THINKLAB_ALERT_HOOK_ONCALL: http://mock-target:9200/hook/oncall
+      THINKLAB_ALERTING_INSECURE_HOSTS: mock-target
 
   # TEST DOUBLE, never part of a real deployment (profile health-test): something for the health monitor to watch, whose answer the smoke controls.
   mock-target:

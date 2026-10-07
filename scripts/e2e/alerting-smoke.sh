@@ -1,9 +1,11 @@
 #!/usr/bin/env bash
-# Live proof of Journey 14, second service (bash port of alerting-smoke.ps1; alerting ADR-030..033): alerting through the platform gateway,
+# Live proof of Journey 14, second service (bash port of alerting-smoke.ps1; alerting ADR-030..036): alerting through the platform gateway,
 # against the target double (docker compose --profile health-test), the REAL health monitor and the REAL incident service: an alert and one
 # real incident per outage (decided by the oldest active rule), nothing more however many evaluations run (four at once included), recovery
 # that resolves the alert and adds an INTERNAL note without closing the incident, a new outage as a new alert, paused rules, staff only,
-# the tenant, and every mutation on the ledger.
+# the tenant, and every mutation on the ledger. Then (ADR-034..036) a flapping check REOPENS its alert instead of opening a new incident, a
+# maintenance window silences it until cancelled, and people are told through webhooks (the double's /hook receiver): opened, escalated while the
+# incident is unacknowledged, resolved and reopened, once each, a failing webhook retried without breaking the evaluation, and only variable NAMES kept.
 # The monitor reaches the double as TARGET_INTERNAL_HOST (mock-target, ports 9200 and 9201), this script as CONTROL_URL (http://localhost:9290).
 set -uo pipefail
 gateway="${GATEWAY_URL:-http://localhost:8088}"
@@ -82,11 +84,11 @@ check_equal 'both checks are probed by the monitor and go UP' True "$(truth wait
 
 # 1. Rules, and nothing down.
 rule_all=$(api POST "$alr/rule/initiate" "{\"name\":\"Everything\",\"impact\":\"LOW\",\"urgency\":\"LOW\",\"requesterId\":\"$filed_for\"}" "${staff[@]}")
-rule_web=$(api POST "$alr/rule/initiate" "{\"name\":\"Intranet\",\"checkId\":\"$web\",\"impact\":\"HIGH\",\"urgency\":\"HIGH\",\"requesterId\":\"$filed_for\"}" "${staff[@]}")
+rule_web=$(api POST "$alr/rule/initiate" "{\"name\":\"Intranet\",\"checkId\":\"$web\",\"impact\":\"HIGH\",\"urgency\":\"HIGH\",\"requesterId\":\"$filed_for\",\"reopenWithinMinutes\":0}" "${staff[@]}")
 rule_all_id=$(api_body "$rule_all" | json "['id']")
 rule_web_id=$(api_body "$rule_web" | json "['id']")
-check_equal 'a rule for every check: 201, ACTIVE' '201/ACTIVE/None' "$(api_status "$rule_all")/$(api_body "$rule_all" | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s/%s' % (d['status'], d.get('checkId')))")"
-check_equal 'a rule for one check: 201, tied to it' "201/$web" "$(api_status "$rule_web")/$(api_body "$rule_web" | json "['checkId']")"
+check_equal 'a rule for every check: 201, ACTIVE, with the default reopen time (30 minutes)' '201/ACTIVE/None/30' "$(api_status "$rule_all")/$(api_body "$rule_all" | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s/%s/%s' % (d['status'], d.get('checkId'), d['reopenWithinMinutes']))")"
+check_equal 'a rule for one check: 201, tied to it, that never reopens (0)' "201/$web/0" "$(api_status "$rule_web")/$(api_body "$rule_web" | json "['checkId']")/$(api_body "$rule_web" | json "['reopenWithinMinutes']")"
 dup=$(api POST "$alr/rule/initiate" "{\"name\":\"Everything\",\"impact\":\"LOW\",\"urgency\":\"LOW\",\"requesterId\":\"$filed_for\"}" "${staff[@]}")
 check_equal 'a rule name already in use is refused (409 ERR-ALR-00409)' '409/ERR-ALR-00409' "$(api_status "$dup")/$(api_body "$dup" | json "['error_code']")"
 check_equal 'a rule must name the requester the incident is filed for (400)' 400 "$(st POST "$alr/rule/initiate" '{"name":"No requester","impact":"LOW","urgency":"LOW"}')"
@@ -197,7 +199,122 @@ check_equal 'an alert cannot be written by hand (404 or 405)' True "$([[ "$post_
 delete_status=$(st DELETE "$alr/rule/$rule_web_id")
 check_equal 'there is no delete (404 or 405)' True "$([[ "$delete_status" == 404 || "$delete_status" == 405 ]] && echo True || echo False)"
 
-# 7. The ledger.
+# 7. A flapping check REOPENS its alert (ADR-034), a window silences it (ADR-035), and people are told through webhooks (ADR-036).
+# A third check on the TCP listener (the web and database checks are done with); its rule names the webhook variables, never an address.
+hooks() { curl -sS "$control/__mock/hooks"; }
+# Only notices the double ACCEPTED count as delivered (it records the refused ones too, with the status it answered).
+hook_count() { hooks | python3 -c "import json,sys; print(sum(1 for h in json.load(sys.stdin) if h['status'] < 400 and h['body'].get('alertId') == '$1' and '%s:%s' % (h['hook'], h['body']['event']) == '$2'))"; }
+refused_count() { hooks | python3 -c "import json,sys; print(sum(1 for h in json.load(sys.stdin) if h['status'] >= 400 and h['body'].get('alertId') == '$1' and '%s:%s' % (h['hook'], h['body']['event']) == '$2'))"; }
+has_hook() { [[ "$(hook_count "$1" "$2")" -ge "${3:-1}" ]]; }
+hook_body() { hooks | python3 -c "import json,sys; print(json.dumps([h['body'] for h in json.load(sys.stdin) if h['status'] < 400 and h['body'].get('alertId') == '$1' and '%s:%s' % (h['hook'], h['body']['event']) == '$2'][0], sort_keys=True))"; }
+eval_field() { evaluate | json "['$1']"; }
+cache_field() { alerts "?checkId=$cache" | json "[0]$1"; }
+cache_resolved() { [[ "$(cache_field "['status']")" == RESOLVED ]]; }
+cache_notice() { alerts "?checkId=$cache" | python3 -c "import json,sys; n={x['notice']: x for x in json.load(sys.stdin)[0]['notices']}.get('$1', {}); print($2)"; }
+notice_failed() { [[ "$(cache_notice REOPENED_1 "n.get('attempts', 0) >= 1 and not n.get('sentAt') and 'HTTP 500' in (n.get('lastError') or '')")" == True ]]; }
+retry_reopened_notice() { evaluate > /dev/null; has_hook "$cache_alert" ops:REOPENED; }
+instant() { python3 -c "import datetime; print((datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=$1)).strftime('%Y-%m-%dT%H:%M:%SZ'))"; }
+incident_notes() { incident "$cache_incident" | python3 -c "import json,sys; c=json.load(sys.stdin)['comments']; print('%s/%s' % (len(c), all(x['internal'] for x in c)))"; }
+
+target /__mock/hooks/reset '{}'; target /__mock/hook-status '{"status":200}'
+cache=$(stb POST "$hlm/initiate" "{\"name\":\"Cache\",\"type\":\"TCP\",\"target\":\"$tcp_target\",\"intervalSeconds\":3600,\"timeoutMillis\":1000,\"failureThreshold\":1}" | json "['id']")
+check_equal 'a third check is probed and goes UP' UP "$(run_check "$cache")"
+address=$(api POST "$alr/rule/initiate" "{\"name\":\"By address\",\"impact\":\"LOW\",\"urgency\":\"LOW\",\"requesterId\":\"$filed_for\",\"notifyTarget\":\"http://$target_host:$http_port/hook/ops\"}" "${staff[@]}")
+check_equal 'a rule names a variable, never an address: the address is refused (400)' 400 "$(api_status "$address")"
+rule_cache=$(api POST "$alr/rule/initiate" "{\"name\":\"Cache\",\"checkId\":\"$cache\",\"impact\":\"MEDIUM\",\"urgency\":\"MEDIUM\",\"requesterId\":\"$filed_for\",\"notifyTarget\":\"THINKLAB_ALERT_HOOK_OPS\",\"escalateTarget\":\"THINKLAB_ALERT_HOOK_ONCALL\",\"escalateAfterMinutes\":1}" "${staff[@]}")
+check_equal 'a rule with webhook notices and an escalation: only the NAMES are kept, reopen time is the default' '201/THINKLAB_ALERT_HOOK_OPS/THINKLAB_ALERT_HOOK_ONCALL/1/30' \
+  "$(api_status "$rule_cache")/$(api_body "$rule_cache" | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s/%s/%s/%s' % (d['notifyTarget'], d['escalateTarget'], d['escalateAfterMinutes'], d['reopenWithinMinutes']))")"
+check_equal 'an escalation target without an escalation time is refused (400)' 400 \
+  "$(st POST "$alr/rule/initiate" "{\"name\":\"Half\",\"impact\":\"LOW\",\"urgency\":\"LOW\",\"requesterId\":\"$filed_for\",\"escalateTarget\":\"THINKLAB_ALERT_HOOK_ONCALL\"}")"
+
+# 7a. The outage: an alert, ONE incident, and the opened notice (only the facts: no address, no person).
+target /__mock/tcp '{"open":false}'
+check_equal 'the third check goes DOWN' DOWN "$(run_check "$cache")"
+evaluate > /dev/null
+has_cache_alerts() { [[ "$(alert_count "?checkId=$cache")" -ge "$1" ]]; }
+check_equal 'an alert is opened for it' True "$(truth wait_for 20 has_cache_alerts 1)"
+cache_alert=$(cache_field "['id']")
+cache_incident=$(cache_field "['incidentId']")
+check_equal 'it has its incident: the fourth, one per outage' 'True/4' "$(truth test -n "$cache_incident")/$(incident_count)"
+check_equal 'the people it names are told: an OPENED notice reaches the opened-notice webhook' True "$(truth wait_for 20 has_hook "$cache_alert" ops:OPENED)"
+check_equal 'the notice carries the ids, the check, the fixed error and the severities, and no address' "Cache/$cache_incident/MEDIUM/MEDIUM/OPENED/True" \
+  "$(hook_body "$cache_alert" ops:OPENED | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s/%s/%s/%s/%s/%s' % (d['check'], d['incidentId'], d['impact'], d['urgency'], d['event'], 'mock-target' not in json.dumps(d) and 'hook' not in json.dumps(d)))")"
+check_equal 'the notice has the text line a chat tool shows' True "$(hook_body "$cache_alert" ops:OPENED | python3 -c "import json,sys; t=json.load(sys.stdin)['text']; print(t.startswith('[ALERT OPENED] Cache is down') and '$cache_incident' in t)")"
+for _ in 1 2 3; do evaluate > /dev/null; done
+sleep 6
+check_equal 'however many evaluations and rounds run, it is told ONCE' 1 "$(hook_count "$cache_alert" ops:OPENED)"
+check_equal 'the alert keeps what came of the notice' True "$(cache_notice OPENED_0 "bool(n.get('sentAt')) and n.get('attempts') == 1 and not n.get('lastError')")"
+
+# 7b. Nobody picks the incident up: after a minute it is ESCALATED to the second webhook, once.
+check_equal 'the incident is still NEW (nobody acknowledged it)' NEW "$(incident "$cache_incident" | json "['status']")"
+check_equal 'after the escalation time an ESCALATED notice reaches the escalation webhook' True "$(truth wait_for 120 has_hook "$cache_alert" oncall:ESCALATED)"
+check_equal 'and it says why' True "$(hook_body "$cache_alert" oncall:ESCALATED | python3 -c "import json,sys; print('not been acknowledged' in json.load(sys.stdin)['text'])")"
+evaluate > /dev/null; sleep 6
+check_equal 'it is escalated ONCE' 1 "$(hook_count "$cache_alert" oncall:ESCALATED)"
+check_equal 'the escalation went only to the escalation webhook' 0 "$(hook_count "$cache_alert" ops:ESCALATED)"
+
+# 7c. Recovery: RESOLVED, the resolved notice, an INTERNAL note on the incident, the incident not closed.
+target /__mock/tcp '{"open":true}'
+check_equal 'the check is UP again' UP "$(run_check "$cache")"
+evaluate > /dev/null
+check_equal 'its alert is RESOLVED' True "$(truth wait_for 20 cache_resolved)"
+check_equal 'a RESOLVED notice reaches the opened-notice webhook' True "$(truth wait_for 20 has_hook "$cache_alert" ops:RESOLVED)"
+check_equal 'the incident got its one internal note and was not closed' '1/True/NEW' "$(incident_notes)/$(incident "$cache_incident" | json "['status']")"
+
+# 7d. The check flaps while a webhook fails: the SAME alert is REOPENED (no new incident, the incident is told) and a failing webhook
+# breaks nothing: the notice is kept on the alert with a fixed reason and retried.
+target /__mock/hook-status '{"status":500}'
+target /__mock/tcp '{"open":false}'
+check_equal 'the check is DOWN again, soon after' DOWN "$(run_check "$cache")"
+check_equal 'the evaluation REOPENS the alert (reopened: 1), whatever the webhook does' 1 "$(eval_field reopened)"
+check_equal 'it is the same alert, OPEN again, reopened once, with no resolution time' "True/OPEN/1/True" \
+  "$(alerts "?checkId=$cache" | python3 -c "import json,sys; l=json.load(sys.stdin); d=l[0]; print('%s/%s/%s/%s' % (len(l) == 1 and d['id'] == '$cache_alert', d['status'], d['reopenCount'], not d.get('resolvedAt')))")"
+check_equal 'no new incident was opened for the flap' 4 "$(incident_count)"
+check_equal 'the incident was told, with a second internal note, and is still the same one' '2/True/NEW' "$(incident_notes)/$(incident "$cache_incident" | json "['status']")"
+check_equal 'the alert trail reads in order' 'OPENED,INCIDENT_OPENED,RESOLVED,REOPENED' "$(trail "$alr/$cache_alert")"
+check_equal 'the failing webhook is kept on the alert: tried, not sent, with a fixed reason that repeats nothing it answered' True "$(truth wait_for 20 notice_failed)"
+check_equal 'the reason is fixed text' 'The notification webhook refused the notice (HTTP 500).' "$(cache_notice REOPENED_1 "n.get('lastError')")"
+check_equal 'the webhook did receive the refused attempt, and nothing counts as delivered yet' '1/0' "$(refused_count "$cache_alert" ops:REOPENED)/$(hook_count "$cache_alert" ops:REOPENED)"
+target /__mock/hook-status '{"status":200}'
+check_equal 'once the webhook answers, the REOPENED notice is retried (not sooner than 30 seconds later) and gets through' True "$(truth wait_for 90 retry_reopened_notice)"
+check_equal 'it has two attempts and was sent' True "$(cache_notice REOPENED_1 "n.get('attempts') == 2 and bool(n.get('sentAt'))")"
+check_equal 'and it is told once' 1 "$(hook_count "$cache_alert" ops:REOPENED)"
+
+# 7e. A maintenance window silences the check until it is cancelled; a recovery is still recorded.
+window=$(api POST "$alr/window/initiate" "{\"name\":\"Cache restart\",\"checkId\":\"$cache\",\"startsAt\":\"$(instant -1)\",\"endsAt\":\"$(instant 60)\"}" "${staff[@]}")
+window_id=$(api_body "$window" | json "['id']")
+check_equal 'a window is planned: 201, ACTIVE, for that check' "201/ACTIVE/$cache" "$(api_status "$window")/$(api_body "$window" | json "['status']")/$(api_body "$window" | json "['checkId']")"
+check_equal 'it can be read and listed' "200/$window_id" "$(st GET "$alr/window/$window_id/retrieve")/$(stb GET "$alr/window/retrieve" | json "[0]['id']")"
+target /__mock/tcp '{"open":true}'
+check_equal 'the check recovers during the window' UP "$(run_check "$cache")"
+evaluate > /dev/null
+check_equal 'the recovery is still recorded: the alert is RESOLVED' True "$(truth wait_for 20 cache_resolved)"
+target /__mock/tcp '{"open":false}'
+check_equal 'the check is DOWN inside the window' DOWN "$(run_check "$cache")"
+check_equal 'the evaluation reopens nothing and notifies nobody' '0/0/0' "$(evaluate | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s/%s/%s' % (d['opened'], d['reopened'], d['notified']))")"
+sleep 7
+check_equal 'neither do the scheduler rounds: the alert stays RESOLVED, one alert, still four incidents, the reopened notice not repeated' 'RESOLVED/1/4/1' \
+  "$(cache_field "['status']")/$(alert_count "?checkId=$cache")/$(incident_count)/$(hook_count "$cache_alert" ops:REOPENED)"
+check_equal 'a REQUESTER cannot plan a window (403 ERR-ALR-00403)' '403/ERR-ALR-00403' \
+  "$(rq POST "$alr/window/initiate" "{\"name\":\"x\",\"startsAt\":\"$(instant -1)\",\"endsAt\":\"$(instant 5)\"}" | python3 -c "import sys; lines=sys.stdin.read().split('\n',1); import json; print('%s/%s' % (lines[0], json.loads(lines[1])['error_code']))")"
+check_equal 'a window that already ended is refused (400)' 400 "$(st POST "$alr/window/initiate" "{\"name\":\"Late\",\"startsAt\":\"$(instant -120)\",\"endsAt\":\"$(instant -60)\"}")"
+check_equal 'another tenant cannot see the window (404)' 404 "$(api_status "$(api GET "$alr/window/$window_id/retrieve" "" "${other_tenant[@]}")")"
+check_equal 'cancelling it ends the silence at once (204)' 204 "$(st PUT "$alr/window/$window_id/control/cancel")"
+check_equal 'cancelling it twice is an illegal transition (409)' 409 "$(st PUT "$alr/window/$window_id/control/cancel")"
+check_equal 'the very next evaluation reopens the alert' 1 "$(eval_field reopened)"
+check_equal 'it is OPEN again, reopened twice, and the notice for that cycle is sent' 'OPEN/2/True' "$(cache_field "['status']")/$(cache_field "['reopenCount']")/$(truth wait_for 20 has_hook "$cache_alert" ops:REOPENED 2)"
+check_equal 'the window trail reads in order' 'INITIATED,CANCELLED' "$(trail "$alr/window/$window_id")"
+check_equal 'there is no delete of a window (404 or 405)' True "$(delete_window=$(st DELETE "$alr/window/$window_id"); [[ "$delete_window" == 404 || "$delete_window" == 405 ]] && echo True || echo False)"
+
+# 7f. Everything recovers; nothing is left open.
+target /__mock/tcp '{"open":true}'
+check_equal 'the check is UP again' UP "$(run_check "$cache")"
+evaluate > /dev/null
+check_equal 'its alert is RESOLVED' True "$(truth wait_for 20 cache_resolved)"
+check_equal 'nothing is left open' 0 "$(alert_count '?status=OPEN')"
+check_equal 'the flaps opened no incident of their own: still one per outage, four in all' 4 "$(incident_count)"
+
+# 8. The ledger.
 recorded=0
 for _ in $(seq 1 20); do
   entries=$(api_body "$(api GET "$ledger_api/retrieve?limit=500" "" "$tenant")")
