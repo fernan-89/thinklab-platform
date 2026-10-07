@@ -66,6 +66,8 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-it-health-monitoring-service';           Port = 8103; Db = 'thinklab_it_health_monitoring_db' },
     # Journey 14, alerting. Polls the health monitor and opens an incident on the incident service (their default local ports), no events; needs the hash registry.
     [pscustomobject]@{ Name = 'micronaut-it-alerting-service';                    Port = 8104; Db = 'thinklab_it_alerting_db' },
+    # Journey 14, backup registry. Independent: only the hash registry for sovereign ids. It records what the backup tools report, no scheduler, no events.
+    [pscustomobject]@{ Name = 'micronaut-it-backup-registry-service';             Port = 8105; Db = 'thinklab_it_backup_registry_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 
