@@ -56,6 +56,11 @@ $staff = @{ 'X-Tenant-Id' = $tenantId; 'X-Executor' = $user }
 $tool = @{ 'X-Tenant-Id' = $tenantId; 'X-Executor' = 'scanner-1' }
 $asRequester = @{ 'X-Tenant-Id' = $tenantId; 'X-Executor' = $filedFor; 'X-Role' = 'REQUESTER' }
 
+# The alerting scheduler also evaluates every few seconds, so a check never relies on what one evaluation did: it evaluates, then waits for the state.
+function Wait-For([int]$Seconds, [scriptblock]$Condition) { $end = (Get-Date).AddSeconds($Seconds); while ((Get-Date) -lt $end) { if (& $Condition) { return $true }; Start-Sleep -Milliseconds 500 }; return [bool](& $Condition) }
+function Alerts-Are([string]$Expected) { "$(@((Invoke-Api GET "$alr/retrieve" $staff).Body).Count)/$(@((Invoke-Api GET "$inc/retrieve" $staff).Body).Count)" -eq $Expected }
+function Status-Is($CheckId, [string]$Expected) { $a = @((Invoke-Api GET "$alr/retrieve?checkId=$CheckId" $staff).Body); ($a.Count -gt 0) -and ($a[0].status -eq $Expected) }
+function Linked($CheckId) { $a = @((Invoke-Api GET "$alr/retrieve?checkId=$CheckId" $staff).Body); ($a.Count -gt 0) -and [bool]$a[0].incidentId }
 function Evaluate { $r = (Invoke-Api PUT "$alr/evaluation/execute" $staff).Body; "$($r.opened)/$($r.resolved)/$($r.incidentsOpened)" }
 function AlertOf($checkId) { @((Invoke-Api GET "$alr/retrieve?checkId=$checkId" $staff).Body)[0] }
 function Rule-Body($name, $source, $checkId = $null) {
@@ -83,8 +88,10 @@ Assert-Equal 'a rule for a policy that is not the disk (a stranger id) watches n
 Assert-Equal 'and a rule with no source is a health check rule' (Invoke-Api POST "$alr/rule/initiate" $staff @{ name = 'Checks'; impact = 'LOW'; urgency = 'LOW'; requesterId = $filedFor }).Body.source 'HEALTH_CHECK'
 
 # 3. One alert and one incident per broken promise; the backup, which no rule watches, is not judged.
-Assert-Equal 'the patch and the disk each open one alert and one incident' (Evaluate) '2/0/2'
-Assert-Equal 'a second evaluation opens nothing more' (Evaluate) '0/0/0'
+[void](Evaluate)
+Assert-Equal 'the patch and the disk each get one alert and one incident (by an evaluation or by the scheduler)' (Wait-For 20 { Alerts-Are '2/2' }) $true
+[void](Evaluate)
+Assert-Equal 'more evaluations open nothing more' (Alerts-Are '2/2') $true
 Assert-Equal 'two alerts and two incidents, and none for the backup' "$(@((Invoke-Api GET "$alr/retrieve" $staff).Body).Count)/$(@((Invoke-Api GET "$inc/retrieve" $staff).Body).Count)/$(@((Invoke-Api GET "$alr/retrieve?checkId=$backup" $staff).Body).Count)" '2/2/0'
 $patchAlert = AlertOf $patch
 Assert-Equal 'the patch alert is OPEN, names the policy and the fixed code, and has its incident' "$($patchAlert.status)/$($patchAlert.checkName)/$($patchAlert.lastError)/$([bool]$patchAlert.incidentId)" 'OPEN/Servers/PATCH_OVERDUE/True'
@@ -95,14 +102,17 @@ Assert-Equal 'the incident says a promise is not being kept, for the asset of th
 
 # 4. A rule for the backup registry: a backup that has never run is not judged, so it opens nothing.
 Assert-Equal 'a rule for the backup registry is set (201)' (Invoke-Api POST "$alr/rule/initiate" $staff (Rule-Body 'Backups' 'BACKUP')).Status 201
-Assert-Equal 'a backup that never ran is not a broken promise: nothing opens' (Evaluate) '0/0/0'
+[void](Evaluate)
+Assert-Equal 'a backup that never ran is not a broken promise: nothing opens' (Alerts-Are '2/2') $true
 
 # 5. Kept again: a waiver and a newer sample resolve the alerts and the incidents are not closed.
 Assert-Equal 'the patch is waived for ten minutes, accepted risk (204)' (Invoke-Api PUT "$pch/finding/$finding/control/waive" $staff @{ reason = 'ACCEPTED_RISK'; until = (Ahead 10) }).Status 204
 Assert-Equal 'a newer sample at 40 is reported (201)' (Invoke-Api POST "$cap/sample/initiate" $tool @{ policyId = $disk; value = 40; measuredAt = (Ahead -1) }).Status 201
-Assert-Equal 'both promises are kept again: two alerts resolved, nothing opened' (Evaluate) '0/2/0'
+[void](Evaluate)
+Assert-Equal 'both promises are kept again: both alerts are resolved, nothing opened' ((Wait-For 20 { Status-Is $patch 'RESOLVED' }) -and (Wait-For 20 { Status-Is $disk 'RESOLVED' }) -and (Alerts-Are '2/2')) $true
 Assert-Equal 'the alerts are RESOLVED and the incidents were not closed' "$((AlertOf $patch).status)/$((AlertOf $disk).status)/$((Invoke-Api GET "$inc/$($patchAlert.incidentId)/retrieve" $staff).Body.status)" 'RESOLVED/RESOLVED/NEW'
-Assert-Equal 'and a further evaluation changes nothing' (Evaluate) '0/0/0'
+[void](Evaluate)
+Assert-Equal 'and a further evaluation changes nothing' (Alerts-Are '2/2') $true
 
 # 6. A vendor agreement about to end (ADR-038): one alert and one incident; a renewal resolves it.
 function Day([int]$Days) { (Get-Date).ToUniversalTime().Date.AddDays($Days).ToString('yyyy-MM-dd') }
@@ -110,11 +120,13 @@ $vendorId = (Invoke-Api POST "$vnd/initiate" $staff @{ name = 'Dell'; category =
 $agreement = (Invoke-Api POST "$vnd/agreement/initiate" $staff @{ vendorId = $vendorId; kind = 'WARRANTY'; reference = 'WTY-77'; assetId = $patchAsset; startsOn = (Day -300); endsOn = (Day 10); noticeDays = 30; autoRenew = $false }).Body.id
 Assert-Equal 'a warranty ending in 10 days with 30 days of notice is EXPIRING' (Invoke-Api GET "$vnd/agreement/$agreement/retrieve" $staff).Body.standing 'EXPIRING'
 Assert-Equal 'a rule for the vendor registry is set (201)' (Invoke-Api POST "$alr/rule/initiate" $staff (Rule-Body 'Agreements' 'VENDOR')).Status 201
-Assert-Equal 'the agreement about to end opens one alert and one incident' (Evaluate) '1/0/1'
+[void](Evaluate)
+Assert-Equal 'the agreement about to end gets one alert and one incident' (Wait-For 20 { Linked $agreement }) $true
 $agreementAlert = AlertOf $agreement
 Assert-Equal 'the alert names the reference and AGREEMENT_EXPIRING, and the incident says so' "$($agreementAlert.checkName)/$($agreementAlert.lastError)/$((Invoke-Api GET "$inc/$($agreementAlert.incidentId)/retrieve" $staff).Body.title)" 'WTY-77/AGREEMENT_EXPIRING/Promise broken: WTY-77'
 Assert-Equal 'the warranty is renewed for two years (204)' (Invoke-Api PUT "$vnd/agreement/$agreement/update" $staff @{ kind = 'WARRANTY'; assetId = $patchAsset; startsOn = (Day -300); endsOn = (Day 730); noticeDays = 30; autoRenew = $false }).Status 204
-Assert-Equal 'the renewal resolves the alert' (Evaluate) '0/1/0'
+[void](Evaluate)
+Assert-Equal 'the renewal resolves the alert' (Wait-For 20 { Status-Is $agreement 'RESOLVED' }) $true
 Assert-Equal 'the alert is RESOLVED' (AlertOf $agreement).status 'RESOLVED'
 
 $results | Format-Table -AutoSize | Out-String | Write-Output

@@ -48,6 +48,12 @@ as_requester=("$tenant" "X-Executor: $filed_for" 'X-Role: REQUESTER')
 
 st() { api_status "$(api "$1" "$2" "${3:-}" "${staff[@]}")"; }
 stb() { api_body "$(api "$1" "$2" "${3:-}" "${staff[@]}")"; }
+# The alerting scheduler also evaluates every few seconds, so a check never relies on what one evaluation did: it evaluates, then waits for the state.
+wait_for() { local seconds=$1; shift; local end=$((SECONDS + seconds)); while (( SECONDS < end )); do "$@" && return 0; sleep 0.5; done; "$@"; }
+truth() { if "$@"; then echo True; else echo False; fi; }
+alerts_are() { [[ "$(stb GET "$alr/retrieve" | count)/$(stb GET "$inc/retrieve" | count)" == "$1" ]]; }
+status_is() { [[ "$(stb GET "$alr/retrieve?checkId=$1" | python3 -c "import json,sys; a=json.load(sys.stdin); print(a[0]['status'] if a else 'NONE')")" == "$2" ]]; }
+linked() { [[ "$(stb GET "$alr/retrieve?checkId=$1" | python3 -c "import json,sys; a=json.load(sys.stdin); print(bool(a and a[0].get('incidentId')))")" == True ]]; }
 evaluate() { stb PUT "$alr/evaluation/execute" | python3 -c "import json,sys; d=json.load(sys.stdin); print('%s/%s/%s' % (d['opened'], d['resolved'], d['incidentsOpened']))"; }
 alert_of() { stb GET "$alr/retrieve?checkId=$1" | json "[0]$2"; }
 rule_json() { printf '{"name":"%s","source":"%s","impact":"HIGH","urgency":"MEDIUM","requesterId":"%s"%s}' "$1" "$2" "$filed_for" "${3:-}"; }
@@ -72,8 +78,10 @@ check_equal 'a rule for a policy that is not the disk (a stranger id) watches no
 check_equal 'and a rule with no source is a health check rule' HEALTH_CHECK "$(stb POST "$alr/rule/initiate" "$(printf '{"name":"Checks","impact":"LOW","urgency":"LOW","requesterId":"%s"}' "$filed_for")" | json "['source']")"
 
 # 3. One alert and one incident per broken promise; the backup, which no rule watches, is not judged.
-check_equal 'the patch and the disk each open one alert and one incident' '2/0/2' "$(evaluate)"
-check_equal 'a second evaluation opens nothing more' '0/0/0' "$(evaluate)"
+evaluate > /dev/null
+check_equal 'the patch and the disk each get one alert and one incident (by an evaluation or by the scheduler)' True "$(truth wait_for 20 alerts_are 2/2)"
+evaluate > /dev/null
+check_equal 'more evaluations open nothing more' True "$(truth alerts_are 2/2)"
 check_equal 'two alerts and two incidents, and none for the backup' '2/2/0' "$(stb GET "$alr/retrieve" | count)/$(stb GET "$inc/retrieve" | count)/$(stb GET "$alr/retrieve?checkId=$backup" | count)"
 check_equal 'the patch alert is OPEN, names the policy and the fixed code, and has its incident' 'OPEN/Servers/PATCH_OVERDUE/True' \
   "$(alert_of "$patch" "['status']")/$(alert_of "$patch" "['checkName']")/$(alert_of "$patch" "['lastError']")/$(alert_of "$patch" "['incidentId']" | python3 -c "import sys; print(sys.stdin.read().strip() not in ('None',''))")"
@@ -84,15 +92,19 @@ check_equal 'the incident says a promise is not being kept, for the asset of the
 
 # 4. A rule for the backup registry: a backup that has never run is not judged, so it opens nothing.
 check_equal 'a rule for the backup registry is set (201)' 201 "$(st POST "$alr/rule/initiate" "$(rule_json 'Backups' BACKUP)")"
-check_equal 'a backup that never ran is not a broken promise: nothing opens' '0/0/0' "$(evaluate)"
+evaluate > /dev/null
+check_equal 'a backup that never ran is not a broken promise: nothing opens' True "$(truth alerts_are 2/2)"
 
 # 5. Kept again: a waiver and a newer sample resolve the alerts and leave an internal note.
 check_equal 'the patch is waived for ten minutes, accepted risk (204)' 204 "$(st PUT "$pch/finding/$finding/control/waive" "{\"reason\":\"ACCEPTED_RISK\",\"until\":\"$(minutes 10)\"}")"
 check_equal 'a newer sample at 40 is reported (201)' 201 "$(api_status "$(api POST "$cap/sample/initiate" "{\"policyId\":\"$disk\",\"value\":40,\"measuredAt\":\"$(minutes -1)\"}" "${tool[@]}")")"
-check_equal 'both promises are kept again: two alerts resolved, nothing opened' '0/2/0' "$(evaluate)"
+both_kept_again() { wait_for 20 status_is "$patch" RESOLVED && wait_for 20 status_is "$disk" RESOLVED && alerts_are 2/2; }
+evaluate > /dev/null
+check_equal 'both promises are kept again: both alerts are resolved, nothing opened' True "$(truth both_kept_again)"
 check_equal 'the alerts are RESOLVED and the incidents were not closed' 'RESOLVED/RESOLVED/NEW' \
   "$(alert_of "$patch" "['status']")/$(alert_of "$disk" "['status']")/$(stb GET "$inc/$(alert_of "$patch" "['incidentId']")/retrieve" | json "['status']")"
-check_equal 'and a further evaluation changes nothing' '0/0/0' "$(evaluate)"
+evaluate > /dev/null
+check_equal 'and a further evaluation changes nothing' True "$(truth alerts_are 2/2)"
 
 # 6. A vendor agreement about to end (ADR-038): one alert and one incident; a renewal resolves it.
 day() { python3 -c "import datetime,sys; print((datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=int(sys.argv[1]))).isoformat())" "$1"; }
@@ -100,11 +112,13 @@ vendor=$(stb POST "$vnd/initiate" '{"name":"Dell","category":"HARDWARE"}' | json
 agreement=$(stb POST "$vnd/agreement/initiate" "{\"vendorId\":\"$vendor\",\"kind\":\"WARRANTY\",\"reference\":\"WTY-77\",\"assetId\":\"$patch_asset\",\"startsOn\":\"$(day -300)\",\"endsOn\":\"$(day 10)\",\"noticeDays\":30,\"autoRenew\":false}" | json "['id']")
 check_equal 'a warranty ending in 10 days with 30 days of notice is EXPIRING' EXPIRING "$(stb GET "$vnd/agreement/$agreement/retrieve" | json "['standing']")"
 check_equal 'a rule for the vendor registry is set (201)' 201 "$(st POST "$alr/rule/initiate" "$(rule_json 'Agreements' VENDOR)")"
-check_equal 'the agreement about to end opens one alert and one incident' '1/0/1' "$(evaluate)"
+evaluate > /dev/null
+check_equal 'the agreement about to end gets one alert and one incident' True "$(truth wait_for 20 linked "$agreement")"
 check_equal 'the alert names the reference and AGREEMENT_EXPIRING, and the incident says so' 'WTY-77/AGREEMENT_EXPIRING/Promise broken: WTY-77' \
   "$(alert_of "$agreement" "['checkName']")/$(alert_of "$agreement" "['lastError']")/$(stb GET "$inc/$(alert_of "$agreement" "['incidentId']")/retrieve" | json "['title']")"
 check_equal 'the warranty is renewed for two years (204)' 204 "$(st PUT "$vnd/agreement/$agreement/update" "{\"kind\":\"WARRANTY\",\"assetId\":\"$patch_asset\",\"startsOn\":\"$(day -300)\",\"endsOn\":\"$(day 730)\",\"noticeDays\":30,\"autoRenew\":false}")"
-check_equal 'the renewal resolves the alert' '0/1/0' "$(evaluate)"
+evaluate > /dev/null
+check_equal 'the renewal resolves the alert' True "$(truth wait_for 20 status_is "$agreement" RESOLVED)"
 check_equal 'the alert is RESOLVED' RESOLVED "$(alert_of "$agreement" "['status']")"
 
 echo "Promises alerting smoke: $checks checks, $failed failed"

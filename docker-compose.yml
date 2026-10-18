@@ -15,6 +15,9 @@ x-service: &service
     mongo:
       condition: service_healthy
   environment: &service-env
+    # About 30 JVMs share one machine (the CI runner included): without a cap each one may grow its heap to a quarter of the host's memory, which
+    # has stalled or killed the runner while the stack starts. A small heap, the serial collector and the C1 compiler keep each service lean.
+    JAVA_TOOL_OPTIONS: -Xmx256m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1
     HASH_SERVICE_URL: http://hash-token-registry:8080
     THINKLAB_JWKS_URL: http://party-authentication:8080/party-authentication/v1/.well-known/jwks.json
     THINKLAB_REVOCATION_URL: http://party-authentication:8080/party-authentication/v1/session/revoked
