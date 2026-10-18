@@ -3,13 +3,15 @@
 # against the REAL patch, capacity and backup registries and the REAL incident service. A rule watches a registry; an overdue patch and a CRITICAL
 # disk each open ONE alert and ONE incident that says a promise is not being kept, with a fixed error code; a second evaluation opens nothing; a
 # registry no active rule watches is not judged (a backup that never ran opens nothing); a rule for one policy covers only that policy; the promise
-# kept again (a waiver, a newer sample) resolves the alert and puts an internal note on the incident; rules keep their source; staff only.
+# kept again (a waiver, a newer sample) resolves the alert and puts an internal note on the incident; rules keep their source; staff only. Then
+# (ADR-038) a vendor agreement about to end opens one alert and a renewal resolves it.
 set -uo pipefail
 gateway="${GATEWAY_URL:-http://localhost:8088}"
 alr="$gateway/it-alerting/v1"
 pch="$gateway/it-patch-registry/v1"
 cap="$gateway/it-capacity-registry/v1"
 bkp="$gateway/it-backup-registry/v1"
+vnd="$gateway/it-vendor-registry/v1"
 inc="$gateway/it-incident-management/v1"
 checks=0
 failed=0
@@ -91,6 +93,19 @@ check_equal 'both promises are kept again: two alerts resolved, nothing opened' 
 check_equal 'the alerts are RESOLVED and the incidents were not closed' 'RESOLVED/RESOLVED/NEW' \
   "$(alert_of "$patch" "['status']")/$(alert_of "$disk" "['status']")/$(stb GET "$inc/$(alert_of "$patch" "['incidentId']")/retrieve" | json "['status']")"
 check_equal 'and a further evaluation changes nothing' '0/0/0' "$(evaluate)"
+
+# 6. A vendor agreement about to end (ADR-038): one alert and one incident; a renewal resolves it.
+day() { python3 -c "import datetime,sys; print((datetime.datetime.now(datetime.timezone.utc).date() + datetime.timedelta(days=int(sys.argv[1]))).isoformat())" "$1"; }
+vendor=$(stb POST "$vnd/initiate" '{"name":"Dell","category":"HARDWARE"}' | json "['id']")
+agreement=$(stb POST "$vnd/agreement/initiate" "{\"vendorId\":\"$vendor\",\"kind\":\"WARRANTY\",\"reference\":\"WTY-77\",\"assetId\":\"$patch_asset\",\"startsOn\":\"$(day -300)\",\"endsOn\":\"$(day 10)\",\"noticeDays\":30,\"autoRenew\":false}" | json "['id']")
+check_equal 'a warranty ending in 10 days with 30 days of notice is EXPIRING' EXPIRING "$(stb GET "$vnd/agreement/$agreement/retrieve" | json "['standing']")"
+check_equal 'a rule for the vendor registry is set (201)' 201 "$(st POST "$alr/rule/initiate" "$(rule_json 'Agreements' VENDOR)")"
+check_equal 'the agreement about to end opens one alert and one incident' '1/0/1' "$(evaluate)"
+check_equal 'the alert names the reference and AGREEMENT_EXPIRING, and the incident says so' 'WTY-77/AGREEMENT_EXPIRING/Promise broken: WTY-77' \
+  "$(alert_of "$agreement" "['checkName']")/$(alert_of "$agreement" "['lastError']")/$(stb GET "$inc/$(alert_of "$agreement" "['incidentId']")/retrieve" | json "['title']")"
+check_equal 'the warranty is renewed for two years (204)' 204 "$(st PUT "$vnd/agreement/$agreement/update" "{\"kind\":\"WARRANTY\",\"assetId\":\"$patch_asset\",\"startsOn\":\"$(day -300)\",\"endsOn\":\"$(day 730)\",\"noticeDays\":30,\"autoRenew\":false}")"
+check_equal 'the renewal resolves the alert' '0/1/0' "$(evaluate)"
+check_equal 'the alert is RESOLVED' RESOLVED "$(alert_of "$agreement" "['status']")"
 
 echo "Promises alerting smoke: $checks checks, $failed failed"
 [[ $failed -eq 0 ]]
