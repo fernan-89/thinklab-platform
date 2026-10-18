@@ -141,6 +141,9 @@ jobs:
       - name: Capacity smoke (a policy judged when read with a straight-line forecast, twenty reports of one sample make one sample, the latest sample only moves forward, a different value never overwrites a moment, a tool that went silent is stale, no free text, two people pausing at once, staff only, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/capacity-smoke.sh
 
+      - name: Vendor smoke (a vendor is a name and a category, an agreement is judged when read as not started, in force, expiring or expired, twenty registrations of one reference make one agreement, a renewal is a new last day, an inactive vendor takes no new agreement, a date that cannot be read is refused and never repeated, staff only, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/vendor-smoke.sh
+
       - name: Promises alerting smoke (a rule watches the patch, capacity or backup registry, a broken promise opens one alert and one incident with a fixed code, a backup that never ran opens nothing, a promise kept again resolves the alert, staff only)
         run: thinklab-platform/scripts/e2e/promises-alerting-smoke.sh
 
