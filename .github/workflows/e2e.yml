@@ -141,6 +141,9 @@ jobs:
       - name: Capacity smoke (a policy judged when read with a straight-line forecast, twenty reports of one sample make one sample, the latest sample only moves forward, a different value never overwrites a moment, a tool that went silent is stale, no free text, two people pausing at once, staff only, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/capacity-smoke.sh
 
+      - name: Promises alerting smoke (a rule watches the patch, capacity or backup registry, a broken promise opens one alert and one incident with a fixed code, a backup that never ran opens nothing, a promise kept again resolves the alert, staff only)
+        run: thinklab-platform/scripts/e2e/promises-alerting-smoke.sh
+
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/billing-smoke.sh
 
