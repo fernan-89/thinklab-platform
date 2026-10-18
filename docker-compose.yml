@@ -15,6 +15,9 @@ x-service: &service
     mongo:
       condition: service_healthy
   environment: &service-env
+    # About 30 JVMs share one machine (the CI runner included): without a cap each one may grow its heap to a quarter of the host's memory, which
+    # has stalled or killed the runner while the stack starts. A small heap, the serial collector and the C1 compiler keep each service lean.
+    JAVA_TOOL_OPTIONS: -Xmx256m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1
     HASH_SERVICE_URL: http://hash-token-registry:8080
     THINKLAB_JWKS_URL: http://party-authentication:8080/party-authentication/v1/.well-known/jwks.json
     THINKLAB_REVOCATION_URL: http://party-authentication:8080/party-authentication/v1/session/revoked
@@ -416,6 +419,17 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_vendor_registry_db?replicaSet=thinklab-rs0
 
+  # Journey 15, second service: the licence registry. Seats bought per product and the counts of seats in use the inventory tools report (a count,
+  # never a list of people), judged when read: it calls no other service, holds no credential and reaches no asset. Staff only.
+  it-license-registry:
+    <<: *service
+    build: ../micronaut-it-license-registry-service
+    image: thinklab/it-license-registry:local
+    ports: ["8109:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_it_license_registry_db?replicaSet=thinklab-rs0
+
   # TEST DOUBLE, never part of a real deployment (profile health-test): something for the health monitor to watch, whose answer the smoke controls.
   mock-target:
     profiles: ["health-test"]
@@ -490,6 +504,7 @@ services:
       GATEWAY_IT_PATCH_REGISTRY_URL: http://it-patch-registry:8080
       GATEWAY_IT_CAPACITY_REGISTRY_URL: http://it-capacity-registry:8080
       GATEWAY_IT_VENDOR_REGISTRY_URL: http://it-vendor-registry:8080
+      GATEWAY_IT_LICENSE_REGISTRY_URL: http://it-license-registry:8080
       # Plain-http compose stack: the refresh cookie cannot be Secure here (set true behind https). Path is as the browser sees it.
       GATEWAY_SESSION_COOKIE_SECURE: "false"
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080

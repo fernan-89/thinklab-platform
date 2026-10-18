@@ -36,6 +36,7 @@ $repos = @(
     'micronaut-it-patch-registry-service',
     'micronaut-it-capacity-registry-service',
     'micronaut-it-vendor-registry-service',
+    'micronaut-it-license-registry-service',
     'micronaut-ci-type-catalog-service'
 )
 foreach ($repo in $repos) {
