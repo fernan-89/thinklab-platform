@@ -70,6 +70,8 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-it-backup-registry-service';             Port = 8105; Db = 'thinklab_it_backup_registry_db' },
     # Journey 14, patch registry. Independent: only the hash registry for sovereign ids. It records what the scanners and update tools report, no scheduler, no events.
     [pscustomobject]@{ Name = 'micronaut-it-patch-registry-service';              Port = 8106; Db = 'thinklab_it_patch_registry_db' },
+    # Journey 14, capacity registry. Independent: only the hash registry for sovereign ids. It records what the measuring tools report, no scheduler, no events.
+    [pscustomobject]@{ Name = 'micronaut-it-capacity-registry-service';           Port = 8107; Db = 'thinklab_it_capacity_registry_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 

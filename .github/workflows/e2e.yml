@@ -138,6 +138,9 @@ jobs:
       - name: Patch smoke (a policy judged when read, twenty reports of one patch make one finding, an applied patch is never reopened, waivers with fixed reasons that run out, no free text, two people waiving at once, staff only, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/patch-smoke.sh
 
+      - name: Capacity smoke (a policy judged when read with a straight-line forecast, twenty reports of one sample make one sample, the latest sample only moves forward, a different value never overwrites a moment, a tool that went silent is stale, no free text, two people pausing at once, staff only, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/capacity-smoke.sh
+
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/billing-smoke.sh
 
