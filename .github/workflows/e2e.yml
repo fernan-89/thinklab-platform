@@ -51,9 +51,19 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: thinklab-platform/scripts/stack/build.sh
 
+      # Build first, then start a few containers at a time: starting the whole stack (35 services) at once has left the runner stuck, or failing to
+      # set up a container's network interface ("resource temporarily unavailable"). The time limit turns a stuck start into a quick failure.
+      - name: Build the images
+        working-directory: thinklab-platform
+        timeout-minutes: 15
+        run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating build
+
       - name: Start the stack
         working-directory: thinklab-platform
-        run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating up -d --build
+        timeout-minutes: 10
+        env:
+          COMPOSE_PARALLEL_LIMIT: "4"
+        run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating up -d
 
       - name: Wait until every service is ready
         run: thinklab-platform/scripts/stack/wait-ready.sh 240

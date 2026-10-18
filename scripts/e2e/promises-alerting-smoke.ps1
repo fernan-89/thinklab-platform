@@ -11,7 +11,8 @@
     (3) the overdue patch and the CRITICAL disk each open ONE alert and ONE incident that says a promise is not being kept, with a fixed error
         code and the asset of the policy; a second evaluation opens nothing;
     (4) a backup that has never run is not judged: a rule for the backup registry opens nothing;
-    (5) the promises kept again (a waiver, a newer sample) resolve both alerts and the incidents are not closed.
+    (5) the promises kept again (a waiver, a newer sample) resolve both alerts and the incidents are not closed;
+    (6) a vendor agreement about to end opens one alert and one incident (ADR-038), and a renewal resolves it.
 
     pwsh -File .\promises-alerting-smoke.ps1
 #>
@@ -47,7 +48,7 @@ function Assert-Equal {
 function Ahead([double]$Minutes) { (Get-Date).ToUniversalTime().AddMinutes($Minutes).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") }
 
 $alr = "$GatewayUrl/it-alerting/v1"; $pch = "$GatewayUrl/it-patch-registry/v1"; $cap = "$GatewayUrl/it-capacity-registry/v1"
-$bkp = "$GatewayUrl/it-backup-registry/v1"; $inc = "$GatewayUrl/it-incident-management/v1"
+$bkp = "$GatewayUrl/it-backup-registry/v1"; $vnd = "$GatewayUrl/it-vendor-registry/v1"; $inc = "$GatewayUrl/it-incident-management/v1"
 $tenantId = [guid]::NewGuid().ToString()
 $user = [guid]::NewGuid().ToString(); $filedFor = [guid]::NewGuid().ToString()
 $patchAsset = [guid]::NewGuid().ToString(); $diskAsset = [guid]::NewGuid().ToString(); $backupAsset = [guid]::NewGuid().ToString()
@@ -102,6 +103,19 @@ Assert-Equal 'a newer sample at 40 is reported (201)' (Invoke-Api POST "$cap/sam
 Assert-Equal 'both promises are kept again: two alerts resolved, nothing opened' (Evaluate) '0/2/0'
 Assert-Equal 'the alerts are RESOLVED and the incidents were not closed' "$((AlertOf $patch).status)/$((AlertOf $disk).status)/$((Invoke-Api GET "$inc/$($patchAlert.incidentId)/retrieve" $staff).Body.status)" 'RESOLVED/RESOLVED/NEW'
 Assert-Equal 'and a further evaluation changes nothing' (Evaluate) '0/0/0'
+
+# 6. A vendor agreement about to end (ADR-038): one alert and one incident; a renewal resolves it.
+function Day([int]$Days) { (Get-Date).ToUniversalTime().Date.AddDays($Days).ToString('yyyy-MM-dd') }
+$vendorId = (Invoke-Api POST "$vnd/initiate" $staff @{ name = 'Dell'; category = 'HARDWARE' }).Body.id
+$agreement = (Invoke-Api POST "$vnd/agreement/initiate" $staff @{ vendorId = $vendorId; kind = 'WARRANTY'; reference = 'WTY-77'; assetId = $patchAsset; startsOn = (Day -300); endsOn = (Day 10); noticeDays = 30; autoRenew = $false }).Body.id
+Assert-Equal 'a warranty ending in 10 days with 30 days of notice is EXPIRING' (Invoke-Api GET "$vnd/agreement/$agreement/retrieve" $staff).Body.standing 'EXPIRING'
+Assert-Equal 'a rule for the vendor registry is set (201)' (Invoke-Api POST "$alr/rule/initiate" $staff (Rule-Body 'Agreements' 'VENDOR')).Status 201
+Assert-Equal 'the agreement about to end opens one alert and one incident' (Evaluate) '1/0/1'
+$agreementAlert = AlertOf $agreement
+Assert-Equal 'the alert names the reference and AGREEMENT_EXPIRING, and the incident says so' "$($agreementAlert.checkName)/$($agreementAlert.lastError)/$((Invoke-Api GET "$inc/$($agreementAlert.incidentId)/retrieve" $staff).Body.title)" 'WTY-77/AGREEMENT_EXPIRING/Promise broken: WTY-77'
+Assert-Equal 'the warranty is renewed for two years (204)' (Invoke-Api PUT "$vnd/agreement/$agreement/update" $staff @{ kind = 'WARRANTY'; assetId = $patchAsset; startsOn = (Day -300); endsOn = (Day 730); noticeDays = 30; autoRenew = $false }).Status 204
+Assert-Equal 'the renewal resolves the alert' (Evaluate) '0/1/0'
+Assert-Equal 'the alert is RESOLVED' (AlertOf $agreement).status 'RESOLVED'
 
 $results | Format-Table -AutoSize | Out-String | Write-Output
 $failed = @($results | Where-Object { $_.Result -eq 'FAIL' }).Count
