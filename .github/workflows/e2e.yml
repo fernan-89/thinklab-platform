@@ -154,6 +154,9 @@ jobs:
       - name: Vendor smoke (a vendor is a name and a category, an agreement is judged when read as not started, in force, expiring or expired, twenty registrations of one reference make one agreement, a renewal is a new last day, an inactive vendor takes no new agreement, a date that cannot be read is refused and never repeated, staff only, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/vendor-smoke.sh
 
+      - name: License smoke (a licence judged when read as OK, near its limit or over it, twenty reports of one count make one report, the latest count only moves forward, a tool that went silent is stale, nothing a tool says is kept or repeated, two people pausing at once, staff only, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/license-smoke.sh
+
       - name: Promises alerting smoke (a rule watches the patch, capacity or backup registry, a broken promise opens one alert and one incident with a fixed code, a backup that never ran opens nothing, a promise kept again resolves the alert, staff only)
         run: thinklab-platform/scripts/e2e/promises-alerting-smoke.sh
 

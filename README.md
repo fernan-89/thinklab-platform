@@ -42,6 +42,7 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | it-patch-registry | 8106 | `micronaut-it-patch-registry-service` |
 | it-capacity-registry | 8107 | `micronaut-it-capacity-registry-service` |
 | it-vendor-registry | 8108 | `micronaut-it-vendor-registry-service` |
+| it-license-registry | 8109 | `micronaut-it-license-registry-service` |
 
 Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
 transactional outbox needs) and NATS JetStream (the event backbone: party-authentication publishes
