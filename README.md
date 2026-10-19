@@ -45,6 +45,7 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | it-license-registry | 8109 | `micronaut-it-license-registry-service` |
 | it-ipam | 8110 | `micronaut-it-ipam-service` |
 | it-cloud-cost | 8111 | `micronaut-it-cloud-cost-service` |
+| it-dr-registry | 8112 | `micronaut-it-dr-registry-service` |
 
 Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
 transactional outbox needs) and NATS JetStream (the event backbone: party-authentication publishes
@@ -132,6 +133,7 @@ With the stack up (either way):
 | `scripts/e2e/run-e2e.sh` (`run-e2e.ps1`) | every service's Postman suite (`docs/postman` in each repo), in dependency order, threading the `organisationId` created by the Party Reference Data Directory suite into the others |
 | `scripts/e2e/starter-pack-smoke.sh` | the starter pack of alert rules through the gateway: an edition gets its rules (Homelab 2, Team 4, Enterprise 6), each taking the class of its source, a repeat creates nothing, moving up adds only what is missing, a paused rule stays paused, another tenant has none, a wrong call exits 2 |
 | `scripts/e2e/netdata-connector-smoke.sh` | the Netdata connector against a test double of an agent (`mock-netdata.mjs`, started by the script): the node reaches the discovery queue once, a chart becomes a capacity sample (dimensions added up, a factor), a failing chart or an unreachable agent fails only what it must, the token is sent and never printed |
+| `scripts/e2e/dr-smoke.sh` | the DR registry through the gateway (DR registry ADR-030..033): a recovery plan judged when read, a walk through the runbook that counts as a pass but measures nothing, a failover and a full recovery that measure the recovery time and point, twenty reports of one exercise make one, a later pass clears a failure and a late report moves nothing, a backup-restore plan that cannot promise to lose nothing, the runbook as an identifier, a race between two people, staff only, every mutation recorded on the ledger |
 | `scripts/e2e/events-smoke.sh` (`events-smoke.ps1`) | creating a user publishes `user.initiated` through the outbox and NATS, and notification-dispatch delivers the welcome notification |
 | `scripts/e2e/hardware-maintenance-smoke.sh` (`hardware-maintenance-smoke.ps1`) | starting a WorkOrder repair moves the Asset into MAINTENANCE and passing quality check moves it back to DEPLOYED, both through NATS |
 | `scripts/e2e/ledger-smoke.sh` (`ledger-smoke.ps1`) | the gateway records every mutating request on the compliance ledger and the hash chain verifies, anchoring included |
