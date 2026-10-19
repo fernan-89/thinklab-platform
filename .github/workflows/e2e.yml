@@ -157,6 +157,9 @@ jobs:
       - name: License smoke (a licence judged when read as OK, near its limit or over it, twenty reports of one count make one report, the latest count only moves forward, a tool that went silent is stale, nothing a tool says is kept or repeated, two people pausing at once, staff only, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/license-smoke.sh
 
+      - name: IPAM smoke (subnets judged when read, twenty overlapping subnets at once leave one, an address held once under twenty requests, twenty next-free requests get twenty addresses, release and reuse, a retired subnet cannot come back over a taken range, staff only, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/ipam-smoke.sh
+
       - name: Promises alerting smoke (a rule watches the patch, capacity or backup registry, a broken promise opens one alert and one incident with a fixed code, a backup that never ran opens nothing, a promise kept again resolves the alert, staff only)
         run: thinklab-platform/scripts/e2e/promises-alerting-smoke.sh
 

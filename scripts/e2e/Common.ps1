@@ -76,6 +76,8 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-it-vendor-registry-service';             Port = 8108; Db = 'thinklab_it_vendor_registry_db' },
     # Journey 15, licence registry. Independent: only the hash registry for sovereign ids. Seats bought and the counts the tools report; no scheduler, no events.
     [pscustomobject]@{ Name = 'micronaut-it-license-registry-service';            Port = 8109; Db = 'thinklab_it_license_registry_db' },
+    # Journey 15, IP address management. Independent: only the hash registry for sovereign ids. Subnets and allocations; no scheduler, no events.
+    [pscustomobject]@{ Name = 'micronaut-it-ipam-service';                        Port = 8110; Db = 'thinklab_it_ipam_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 
