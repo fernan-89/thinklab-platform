@@ -68,6 +68,15 @@ scripts/stack/wait-ready.sh      # waits for /health/readiness on every service
 The web app (`../thinklab-web`) is behind a compose profile so the commands above never need it:
 `docker compose --profile web up -d --build` serves it on http://localhost:3000 (`scripts/e2e/seed-demo.ps1` creates a demo tenant to sign in with).
 
+### Homelab edition and its memory
+
+`scripts/stack/homelab.sh up` starts only what a home lab needs (MongoDB, NATS, sign-in, assets, discovery, health checks, capacity, incidents, alerting, the gateway),
+with a 160 MiB heap per service and 256 MiB for the gateway (`THINKLAB_JAVA_OPTS`, `THINKLAB_GATEWAY_JAVA_OPTS`); the images must already be built. A route of a service that is
+not started answers 502. `scripts/stack/homelab.sh footprint` adds up the memory of those containers and exits 1 over `THINKLAB_FOOTPRINT_BUDGET_MIB` (default 2560).
+
+Measured on 2026-10-19 (12 containers, a fresh start, a capacity smoke run against it): **about 2.0-2.1 GiB**, against about 3.9 GiB for the 16 containers of the usual
+stack (250 MiB heaps; extrapolated, about 8 GiB for all of it). The gateway was the surprise: it had no heap cap at all and started at 1.1 GiB.
+
 ### Starter pack of alert rules
 
 `scripts/stack/seed-starter-pack.sh <HOMELAB|TEAM|ENTERPRISE> <organisationId> <requesterId>` (`seed-starter-pack.ps1` on Windows) gives a tenant the

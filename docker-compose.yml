@@ -17,7 +17,8 @@ x-service: &service
   environment: &service-env
     # About 30 JVMs share one machine (the CI runner included): without a cap each one may grow its heap to a quarter of the host's memory, which
     # has stalled or killed the runner while the stack starts. A small heap, the serial collector and the C1 compiler keep each service lean.
-    JAVA_TOOL_OPTIONS: -Xmx256m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1
+    # THINKLAB_JAVA_OPTS replaces the whole line (scripts/stack/homelab.sh sets a smaller heap).
+    JAVA_TOOL_OPTIONS: ${THINKLAB_JAVA_OPTS:--Xmx256m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1}
     HASH_SERVICE_URL: http://hash-token-registry:8080
     THINKLAB_JWKS_URL: http://party-authentication:8080/party-authentication/v1/.well-known/jwks.json
     THINKLAB_REVOCATION_URL: http://party-authentication:8080/party-authentication/v1/session/revoked
@@ -499,6 +500,8 @@ services:
     restart: unless-stopped
     ports: ["8088:8080"]
     environment: &gateway-env
+      # Not capped by default (it is the one JVM that was never capped); scripts/stack/homelab.sh sets THINKLAB_GATEWAY_JAVA_OPTS.
+      JAVA_TOOL_OPTIONS: ${THINKLAB_GATEWAY_JAVA_OPTS:-}
       THINKLAB_JWKS_URL: http://party-authentication:8080/party-authentication/v1/.well-known/jwks.json
       THINKLAB_REVOCATION_URL: http://party-authentication:8080/party-authentication/v1/session/revoked
       GATEWAY_PARTY_AUTHENTICATION_URL: http://party-authentication:8080
