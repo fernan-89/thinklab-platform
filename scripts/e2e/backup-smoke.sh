@@ -15,6 +15,9 @@ trap 'rm -rf "$tmp"' EXIT
 json() { python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
 uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
 count() { python3 -c "import json,sys; print(len(json.load(sys.stdin)))"; }
+# Two moments from ONE reading of the clock: "START FINISH", that many minutes ago. A duration asserted to the minute must never depend on two readings
+# (a loaded runner can take a second between them, and a duration is rounded up to whole minutes).
+minutes_span() { python3 -c "import datetime,sys; n=datetime.datetime.now(datetime.timezone.utc); f='%Y-%m-%dT%H:%M:%SZ'; print((n - datetime.timedelta(minutes=int(sys.argv[1]))).strftime(f), (n - datetime.timedelta(minutes=int(sys.argv[2]))).strftime(f))" "$1" "$2"; }
 minutes_ago() { python3 -c "import datetime,sys; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=int(sys.argv[1]))).strftime('%Y-%m-%dT%H:%M:%SZ'))" "$1"; }
 
 # api METHOD URL BODY HEADER... -> prints "<status>\n<body>", never exits on a non-2xx.
@@ -59,7 +62,7 @@ check_equal 'the list finds it by protection NEVER and by asset' "$policy/$polic
   "$(stb GET "$bkp/retrieve?protection=NEVER&assetId=$asset_id" | python3 -c "import json,sys; print(','.join(p['id'] for p in json.load(sys.stdin)))")/$(stb GET "$bkp/retrieve?assetId=$asset_id" | python3 -c "import json,sys; print(','.join(p['id'] for p in json.load(sys.stdin)))")"
 
 # 2. A tool reports; the same run twenty times at once is one run.
-start=$(minutes_ago 300); finish=$(minutes_ago 280)
+read -r start finish < <(minutes_span 300 280)
 for i in $(seq 1 20); do
   ( curl -sS -o "$tmp/body$i" -w '%{http_code}' -X POST -H 'Content-Type: application/json' -H "$tenant" -H "X-Executor: backup-agent-$i" \
       -d "$(run_json BACKUP SUCCEEDED "$start" "$finish" ',"sizeBytes":1048576')" "$bkp/run/initiate" > "$tmp/code$i" ) &
@@ -98,7 +101,8 @@ check_equal 'a run that finishes in the future is refused (400)' 400 "$(api_stat
 
 # 5. The recovery is proved by a restore test.
 check_equal 'before a restore test, the recovery time is unknown (the field is left out)' None "$(field ".get('rtoMet')")"
-check_equal 'a restore test that took 20 minutes is reported (201)' 201 "$(api_status "$(report "$(run_json RESTORE_TEST SUCCEEDED "$(minutes_ago 30)" "$(minutes_ago 10)")")")"
+read -r restore_start restore_finish < <(minutes_span 30 10)
+check_equal 'a restore test that took 20 minutes is reported (201)' 201 "$(api_status "$(report "$(run_json RESTORE_TEST SUCCEEDED "$restore_start" "$restore_finish")")")"
 check_equal 'it meets the 120 minute objective, took 20, and left the last success alone' "True/20/$newer_finish" "$(field "['rtoMet']")/$(field "['lastRestoreMinutes']")/$(field "['lastSuccessAt']")"
 check_equal 'a tighter objective of 10 minutes (update, 204)' 204 "$(st PUT "$bkp/$policy/update" "$(policy_json 'Database nightly' 10)")"
 check_equal 'the same restore test now misses it, and the summary was kept' 'False/20' "$(field "['rtoMet']")/$(field "['lastRestoreMinutes']")"
