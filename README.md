@@ -68,6 +68,22 @@ scripts/stack/wait-ready.sh      # waits for /health/readiness on every service
 The web app (`../thinklab-web`) is behind a compose profile so the commands above never need it:
 `docker compose --profile web up -d --build` serves it on http://localhost:3000 (`scripts/e2e/seed-demo.ps1` creates a demo tenant to sign in with).
 
+### Starter pack of alert rules
+
+`scripts/stack/seed-starter-pack.sh <HOMELAB|TEAM|ENTERPRISE> <organisationId> <requesterId>` (`seed-starter-pack.ps1` on Windows) gives a tenant the
+alert rules its edition starts with, through the gateway. A rule with no check covers every check or policy of its source, so the pack keeps working as
+assets are added:
+
+| Edition | Rules |
+|---|---|
+| `HOMELAB` | health checks down, capacity policy critical |
+| `TEAM` | the above, plus backup promise broken and patch overdue |
+| `ENTERPRISE` | the above (higher impact and urgency), plus vendor agreement about to end and licence over its limit |
+
+It is only rules: capacity, backup and patch policies are about one asset and a number only its owner knows, so they cannot be guessed. Running it
+again keeps what is there and adds what is missing (moving a tenant from `HOMELAB` to `TEAM` adds the two new rules), and it never touches a rule that
+was changed or paused. No rule names a webhook, since the environment variables are the deployment's: add `notifyTarget` with `rule/update`.
+
 The images package each service's `installDist` output, so nothing is compiled inside Docker and no
 credential reaches an image. The build needs `micronaut-thinklab-service-kit` from GitHub Packages: export
 `GITHUB_ACTOR` and `GITHUB_TOKEN` (a token with `read:packages`), or publish the kit to your local
