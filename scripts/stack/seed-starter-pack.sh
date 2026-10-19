@@ -25,12 +25,14 @@ team=(
   "${homelab[@]}"
   "Starter: a backup promise is broken|BACKUP|HIGH|MEDIUM|0"
   "Starter: a patch is overdue|PATCH|MEDIUM|MEDIUM|0"
+  "Starter: a recovery plan is not ready|DR|MEDIUM|MEDIUM|0"
 )
 enterprise=(
   "Starter: a health check is down|HEALTH_CHECK|HIGH|HIGH|30"
   "Starter: a capacity policy is critical|CAPACITY|HIGH|MEDIUM|0"
   "Starter: a backup promise is broken|BACKUP|HIGH|HIGH|0"
   "Starter: a patch is overdue|PATCH|HIGH|MEDIUM|0"
+  "Starter: a recovery plan is not ready|DR|HIGH|MEDIUM|0"
   "Starter: a vendor agreement is about to end|VENDOR|MEDIUM|LOW|0"
   "Starter: a licence is over its limit|LICENSE|MEDIUM|MEDIUM|0"
 )

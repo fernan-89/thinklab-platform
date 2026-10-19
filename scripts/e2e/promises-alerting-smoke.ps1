@@ -13,7 +13,8 @@
     (4) a backup that has never run is not judged: a rule for the backup registry opens nothing;
     (5) the promises kept again (a waiver, a newer sample) resolve both alerts and the incidents are not closed;
     (6) a vendor agreement about to end opens one alert and one incident (ADR-038), and a renewal resolves it;
-    (7) a licence over its limit opens one alert and one incident (ADR-039), and freed seats resolve it.
+    (7) a licence over its limit opens one alert and one incident (ADR-039), and freed seats resolve it;
+    (8) a recovery plan whose exercise failed opens one alert and one incident (ADR-041), and a later pass resolves it.
 
     pwsh -File .\promises-alerting-smoke.ps1
 #>
@@ -49,7 +50,7 @@ function Assert-Equal {
 function Ahead([double]$Minutes) { (Get-Date).ToUniversalTime().AddMinutes($Minutes).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") }
 
 $alr = "$GatewayUrl/it-alerting/v1"; $pch = "$GatewayUrl/it-patch-registry/v1"; $cap = "$GatewayUrl/it-capacity-registry/v1"
-$bkp = "$GatewayUrl/it-backup-registry/v1"; $vnd = "$GatewayUrl/it-vendor-registry/v1"; $lic = "$GatewayUrl/it-license-registry/v1"; $inc = "$GatewayUrl/it-incident-management/v1"
+$bkp = "$GatewayUrl/it-backup-registry/v1"; $vnd = "$GatewayUrl/it-vendor-registry/v1"; $lic = "$GatewayUrl/it-license-registry/v1"; $dr = "$GatewayUrl/it-dr-registry/v1"; $inc = "$GatewayUrl/it-incident-management/v1"
 $tenantId = [guid]::NewGuid().ToString()
 $user = [guid]::NewGuid().ToString(); $filedFor = [guid]::NewGuid().ToString()
 $patchAsset = [guid]::NewGuid().ToString(); $diskAsset = [guid]::NewGuid().ToString(); $backupAsset = [guid]::NewGuid().ToString()
@@ -142,6 +143,27 @@ Assert-Equal 'the alert names the product and LICENSE_OVER_LIMIT' "$($licenseAle
 Assert-Equal 'seats are freed: 9 in use is reported (201)' (Invoke-Api POST "$lic/usage/initiate" $tool @{ licenseId = $license; inUse = 9; measuredAt = (CountAt 1) }).Status 201
 [void](Evaluate)
 Assert-Equal 'back within the limit (NEAR_LIMIT is not an incident): the alert is resolved' (Wait-For 20 { Status-Is $license 'RESOLVED' }) $true
+
+# 8. A recovery plan that stops being ready (ADR-041): a failed exercise opens one alert and one incident, a later pass resolves it.
+function MinutesFromNow([int]$Minutes) { (Get-Date).ToUniversalTime().AddMinutes($Minutes).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") }
+$plan = (Invoke-Api POST "$dr/initiate" $staff @{ name = 'Orders failover'; assetId = $patchAsset; strategy = 'WARM_STANDBY'; rtoMinutes = 120; rpoMinutes = 30; testEveryDays = 30 }).Body.id
+Assert-Equal 'a plan never exercised is NEVER_TESTED' (Invoke-Api GET "$dr/$plan/retrieve" $staff).Body.readiness 'NEVER_TESTED'
+Assert-Equal 'a rule for the DR registry is set (201)' (Invoke-Api POST "$alr/rule/initiate" $staff (Rule-Body 'Recovery plans' 'DR')).Status 201
+[void](Evaluate)
+Assert-Equal 'a plan never exercised is not judged: nothing opens' @((Invoke-Api GET "$alr/retrieve?checkId=$plan" $staff).Body).Count 0
+Assert-Equal 'a failover that failed is reported with its fixed reason (201)' (Invoke-Api POST "$dr/exercise/initiate" $tool @{ planId = $plan; kind = 'FAILOVER'; outcome = 'FAILED'; startedAt = (MinutesFromNow -120); finishedAt = (MinutesFromNow -100); failureReason = 'DEPENDENCY_MISSING' }).Status 201
+Assert-Equal 'the plan is LAST_EXERCISE_FAILED' (Invoke-Api GET "$dr/$plan/retrieve" $staff).Body.readiness 'LAST_EXERCISE_FAILED'
+[void](Evaluate)
+Assert-Equal 'the plan gets one alert and one incident' (Wait-For 20 { Linked $plan }) $true
+$planAlert = AlertOf $plan
+$planIncident = (Invoke-Api GET "$inc/$($planAlert.incidentId)/retrieve" $staff).Body
+Assert-Equal 'the alert names the plan and the fixed code DR_EXERCISE_FAILED, and the incident says a promise is not being kept' "$($planAlert.checkName)/$($planAlert.lastError)/$($planIncident.title)/$($planIncident.description -like '*is not being kept (DR_EXERCISE_FAILED)*')" 'Orders failover/DR_EXERCISE_FAILED/Promise broken: Orders failover/True'
+[void](Evaluate)
+Assert-Equal 'more evaluations open nothing more for the plan' @((Invoke-Api GET "$alr/retrieve?checkId=$plan" $staff).Body).Count 1
+Assert-Equal 'a later failover that passed inside the objectives is reported (201)' (Invoke-Api POST "$dr/exercise/initiate" $tool @{ planId = $plan; kind = 'FAILOVER'; outcome = 'SUCCEEDED'; startedAt = (MinutesFromNow -60); finishedAt = (MinutesFromNow -30); dataLossMinutes = 5 }).Status 201
+Assert-Equal 'the plan is READY again' (Invoke-Api GET "$dr/$plan/retrieve" $staff).Body.readiness 'READY'
+[void](Evaluate)
+Assert-Equal 'the pass resolves the alert' (Wait-For 20 { Status-Is $plan 'RESOLVED' }) $true
 
 $results | Format-Table -AutoSize | Out-String | Write-Output
 $failed = @($results | Where-Object { $_.Result -eq 'FAIL' }).Count

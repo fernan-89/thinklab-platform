@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Live proof of the starter pack of alert rules (scripts/stack/seed-starter-pack.sh) through the platform gateway: an edition gets its rules (Homelab 2,
-# Team 4, Enterprise 6), each watching every policy of its source and taking the class of that source; running it again creates nothing; moving up an
+# Team 5, Enterprise 7), each watching every policy of its source and taking the class of that source; running it again creates nothing; moving up an
 # edition adds only what is missing; a rule a person paused stays paused; another tenant has none of it; an unknown edition or a missing argument
 # exits 2.
 set -uo pipefail
@@ -56,19 +56,19 @@ check_equal 'no rule names a webhook' True "$(rules | python3 -c "import json,sy
 health=$(rules | python3 -c "import json,sys; print([r['id'] for r in json.load(sys.stdin) if r.get('source','HEALTH_CHECK')=='HEALTH_CHECK'][0])")
 check_equal 'a person can pause a rule (204)' 204 "$(api_status "$(api PUT "$alr/rule/$health/control/pause" "" "${staff[@]}")")"
 out=$("$pack" TEAM "$tenant_id" "$requester" 2>&1); status=$?
-check_equal 'Team keeps the two and adds two' '0/TEAM: 2 created, 2 already there, 0 failed' "$status/$(last_line "$out")"
-check_equal 'now backups and patches are watched too' 'BACKUP,CAPACITY,HEALTH_CHECK,PATCH' "$(sources)"
+check_equal 'Team keeps the two and adds three' '0/TEAM: 3 created, 2 already there, 0 failed' "$status/$(last_line "$out")"
+check_equal 'now backups, patches and recovery plans are watched too' 'BACKUP,CAPACITY,DR,HEALTH_CHECK,PATCH' "$(sources)"
 check_equal 'the rule that was paused is still paused' PAUSED "$(api_body "$(api GET "$alr/rule/$health/retrieve" "" "${staff[@]}")" | json "['status']")"
 
 # 3. Again: nothing to create.
 out=$("$pack" TEAM "$tenant_id" "$requester" 2>&1); status=$?
-check_equal 'running Team again creates nothing' '0/TEAM: 0 created, 4 already there, 0 failed' "$status/$(last_line "$out")"
-check_equal 'still four rules' 4 "$(rules | count)"
+check_equal 'running Team again creates nothing' '0/TEAM: 0 created, 5 already there, 0 failed' "$status/$(last_line "$out")"
+check_equal 'still five rules' 5 "$(rules | count)"
 
 # 4. Enterprise.
 out=$("$pack" ENTERPRISE "$tenant_id" "$requester" 2>&1); status=$?
-check_equal 'Enterprise adds the vendor and licence rules' '0/ENTERPRISE: 2 created, 4 already there, 0 failed' "$status/$(last_line "$out")"
-check_equal 'six rules, all six sources' 'BACKUP,CAPACITY,HEALTH_CHECK,LICENSE,PATCH,VENDOR' "$(sources)"
+check_equal 'Enterprise adds the vendor and licence rules' '0/ENTERPRISE: 2 created, 5 already there, 0 failed' "$status/$(last_line "$out")"
+check_equal 'seven rules, all seven sources' 'BACKUP,CAPACITY,DR,HEALTH_CHECK,LICENSE,PATCH,VENDOR' "$(sources)"
 check_equal 'the contract rules are CONTRACT' 'CONTRACT,CONTRACT' \
   "$(rules | python3 -c "import json,sys; print(','.join(r['alertClass'] for r in json.load(sys.stdin) if r.get('source') in ('VENDOR','LICENSE')))")"
 
