@@ -19,3 +19,34 @@ jobs:
       - uses: actions/checkout@v7
       - name: Validate docker-compose.yml
         run: docker compose -f docker-compose.yml config --quiet
+
+  scripts:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      # The Homelab edition (scripts/stack/homelab.sh) names the services it starts: every one must still be defined in docker-compose.yml, or
+      # `up` would fail on a machine that tries it. Memory is measured by hand, not here (it needs the images built).
+      - name: Every service of the Homelab set is in docker-compose.yml
+        run: |
+          defined=$(docker compose -f docker-compose.yml config --services)
+          missing=0
+          for service in $(scripts/stack/homelab.sh services); do
+            if ! grep -qx "$service" <<<"$defined"; then echo "not in docker-compose.yml: $service"; missing=1; fi
+          done
+          [ "$missing" -eq 0 ]
+          echo "$(scripts/stack/homelab.sh services | wc -l) services, all defined"
+      - name: Homelab turns an unknown command away
+        run: |
+          set +e
+          scripts/stack/homelab.sh nonsense >/dev/null 2>&1
+          [ "$?" -eq 2 ]
+      - name: The Homelab heap can be set from the environment, the default is unchanged
+        run: |
+          docker compose -f docker-compose.yml config | grep -c 'JAVA_TOOL_OPTIONS: -Xmx256m' | grep -qv '^0$'
+          THINKLAB_JAVA_OPTS='-Xmx160m' docker compose -f docker-compose.yml config | grep -q 'JAVA_TOOL_OPTIONS: -Xmx160m'
+      - name: The new scripts parse
+        run: |
+          for script in scripts/stack/homelab.sh scripts/stack/seed-starter-pack.sh scripts/connectors/netdata-sync.sh \
+                        scripts/e2e/starter-pack-smoke.sh scripts/e2e/netdata-connector-smoke.sh; do
+            bash -n "$script"
+          done

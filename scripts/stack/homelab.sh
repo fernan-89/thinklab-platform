@@ -4,6 +4,7 @@
 #   scripts/stack/homelab.sh up          # starts only the Homelab services (the images must be built: scripts/stack/build.sh)
 #   scripts/stack/homelab.sh down        # stops them
 #   scripts/stack/homelab.sh footprint   # memory of the running containers of this project; exits 1 over the budget
+#   scripts/stack/homelab.sh services    # the services of the set, one per line (the CI checks that each is defined in docker-compose.yml)
 #
 # Homelab = sign-in, assets, discovery, health checks, capacity, incidents and alerting, behind the gateway. A route of a service that is not started
 # answers 502 from the gateway; nothing else depends on the missing services. Environment:
@@ -23,6 +24,7 @@ budget="${THINKLAB_FOOTPRINT_BUDGET_MIB:-2560}"
 case "${1:-}" in
   up) docker compose up -d --no-build "${services[@]}" ;;
   down) docker compose stop "${services[@]}" ;;
+  services) printf '%s\n' "${services[@]}" ;;
   footprint)
     ids=$(docker compose ps -q "${services[@]}")
     [[ -n "$ids" ]] || { echo "no Homelab container is running (scripts/stack/homelab.sh up)" >&2; exit 2; }
@@ -41,5 +43,5 @@ budget=float(sys.argv[1])
 print("%8.1f MiB  total in %d containers (budget %.0f MiB)" % (total,len(rows),budget))
 sys.exit(0 if total<=budget else 1)' "$budget"
     ;;
-  *) echo "usage: $0 up|down|footprint" >&2; exit 2 ;;
+  *) echo "usage: $0 up|down|footprint|services" >&2; exit 2 ;;
 esac

@@ -130,6 +130,8 @@ With the stack up (either way):
 | Script | What it checks |
 |---|---|
 | `scripts/e2e/run-e2e.sh` (`run-e2e.ps1`) | every service's Postman suite (`docs/postman` in each repo), in dependency order, threading the `organisationId` created by the Party Reference Data Directory suite into the others |
+| `scripts/e2e/starter-pack-smoke.sh` | the starter pack of alert rules through the gateway: an edition gets its rules (Homelab 2, Team 4, Enterprise 6), each taking the class of its source, a repeat creates nothing, moving up adds only what is missing, a paused rule stays paused, another tenant has none, a wrong call exits 2 |
+| `scripts/e2e/netdata-connector-smoke.sh` | the Netdata connector against a test double of an agent (`mock-netdata.mjs`, started by the script): the node reaches the discovery queue once, a chart becomes a capacity sample (dimensions added up, a factor), a failing chart or an unreachable agent fails only what it must, the token is sent and never printed |
 | `scripts/e2e/events-smoke.sh` (`events-smoke.ps1`) | creating a user publishes `user.initiated` through the outbox and NATS, and notification-dispatch delivers the welcome notification |
 | `scripts/e2e/hardware-maintenance-smoke.sh` (`hardware-maintenance-smoke.ps1`) | starting a WorkOrder repair moves the Asset into MAINTENANCE and passing quality check moves it back to DEPLOYED, both through NATS |
 | `scripts/e2e/ledger-smoke.sh` (`ledger-smoke.ps1`) | the gateway records every mutating request on the compliance ledger and the hash chain verifies, anchoring included |
