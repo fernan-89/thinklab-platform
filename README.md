@@ -97,7 +97,7 @@ assets are added:
 |---|---|
 | `HOMELAB` | health checks down, capacity policy critical |
 | `TEAM` | the above, plus backup promise broken, patch overdue and recovery plan not ready |
-| `ENTERPRISE` | the above (higher impact and urgency), plus vendor agreement about to end and licence over its limit |
+| `ENTERPRISE` | the above (higher impact and urgency), plus vendor agreement about to end, licence over its limit and cloud resource gone missing |
 
 It is only rules: capacity, backup and patch policies are about one asset and a number only its owner knows, so they cannot be guessed. Running it
 again keeps what is there and adds what is missing (moving a tenant from `HOMELAB` to `TEAM` adds the three new rules), and it never touches a rule that
@@ -140,7 +140,7 @@ With the stack up (either way):
 | Script | What it checks |
 |---|---|
 | `scripts/e2e/run-e2e.sh` (`run-e2e.ps1`) | every service's Postman suite (`docs/postman` in each repo), in dependency order, threading the `organisationId` created by the Party Reference Data Directory suite into the others |
-| `scripts/e2e/starter-pack-smoke.sh` (`starter-pack-smoke.ps1`) | the starter pack of alert rules through the gateway: an edition gets its rules (Homelab 2, Team 5, Enterprise 7), each taking the class of its source, a repeat creates nothing, moving up adds only what is missing, a paused rule stays paused, another tenant has none, a wrong call exits 2 |
+| `scripts/e2e/starter-pack-smoke.sh` (`starter-pack-smoke.ps1`) | the starter pack of alert rules through the gateway: an edition gets its rules (Homelab 2, Team 5, Enterprise 8), each taking the class of its source, a repeat creates nothing, moving up adds only what is missing, a paused rule stays paused, another tenant has none, a wrong call exits 2 |
 | `scripts/e2e/netdata-connector-smoke.sh` (`netdata-connector-smoke.ps1`) | the Netdata connector against a test double of an agent (`mock-netdata.mjs`, started by the script): the node reaches the discovery queue once, a chart becomes a capacity sample (dimensions added up, a factor), a failing chart or an unreachable agent fails only what it must, the token is sent and never printed |
 | `scripts/e2e/dr-smoke.sh` (`dr-smoke.ps1`) | the DR registry through the gateway (DR registry ADR-030..033): a recovery plan judged when read, a walk through the runbook that counts as a pass but measures nothing, a failover and a full recovery that measure the recovery time and point, twenty reports of one exercise make one, a later pass clears a failure and a late report moves nothing, a backup-restore plan that cannot promise to lose nothing, the runbook as an identifier, a race between two people, staff only, every mutation recorded on the ledger |
 | `scripts/e2e/cloud-inventory-smoke.sh` (`cloud-inventory-smoke.ps1`) | the cloud inventory through the gateway (cloud inventory ADR-030..034): an AWS or Azure resource whose provider id is its identity, the same one again restated, a changed report that replaces the snapshot, twenty reports of one new resource that make one, fixed lists and four tags with nothing a tool says repeated, judged present or gone when read, a terminated resource that comes back, the filters and the summary, staff only, recorded on the ledger |

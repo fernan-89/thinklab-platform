@@ -5,7 +5,8 @@
 # registry no active rule watches is not judged (a backup that never ran opens nothing); a rule for one policy covers only that policy; the promise
 # kept again (a waiver, a newer sample) resolves the alert and puts an internal note on the incident; rules keep their source; staff only. Then
 # (ADR-038) a vendor agreement about to end opens one alert and a renewal resolves it, and (ADR-039) a licence over its limit opens one alert
-# and freed seats resolve it.
+# and freed seats resolve it, (ADR-041) a recovery plan that stops being ready, and (ADR-042) a cloud resource the tool has not seen for days (the smoke moves
+# the moment the tool last saw it back in the store with docker exec on the MongoDB container, MONGO_CONTAINER) opens one alert and seeing it again resolves it.
 set -uo pipefail
 gateway="${GATEWAY_URL:-http://localhost:8088}"
 alr="$gateway/it-alerting/v1"
@@ -15,6 +16,8 @@ bkp="$gateway/it-backup-registry/v1"
 vnd="$gateway/it-vendor-registry/v1"
 lic="$gateway/it-license-registry/v1"
 dr="$gateway/it-dr-registry/v1"
+inv_reg="$gateway/it-cloud-inventory/v1"
+mongo_container="${MONGO_CONTAINER:-thinklab-mongo-1}"
 inc="$gateway/it-incident-management/v1"
 checks=0
 failed=0
@@ -155,6 +158,36 @@ check_equal 'a later failover that passed inside the objectives is reported (201
 check_equal 'the plan is READY again' READY "$(stb GET "$dr/$plan/retrieve" | json "['readiness']")"
 evaluate > /dev/null
 check_equal 'the pass resolves the alert' True "$(truth wait_for 20 status_is "$plan" RESOLVED)"
+
+# 9. A cloud resource that goes missing (ADR-042). The inventory judges a resource missing after 48 hours of silence, so the smoke moves the moment the tool last
+# saw it back in the store, the way two days passing would; everything else goes through the gateway.
+account=$(uuid)
+resource_json() { printf '{"accountId":"%s","provider":"AWS","externalId":"%s","name":"%s","kind":"COMPUTE","region":"us-east-1","state":"%s","tags":{}}' "$account" "$1" "$2" "$3"; }
+report_resource() { api POST "$inv_reg/initiate" "$(resource_json "$1" "$2" "$3")" "${tool[@]}"; }
+age() { docker exec "$mongo_container" mongosh --quiet --eval "db.getSiblingDB('thinklab_it_cloud_inventory_db').cloud_resources.updateOne({_id: UUID('$1')}, {\$set: {lastSeenAt: new Date(Date.now() - 5 * 24 * 3600 * 1000)}})" > /dev/null; }
+vm=$(api_body "$(report_resource i-0missing web-1 RUNNING)" | json "['id']")
+check_equal 'a resource the tool saw just now is PRESENT' PRESENT "$(stb GET "$inv_reg/$vm/retrieve" | json "['presence']")"
+check_equal 'a rule for the cloud inventory is set (201)' 201 "$(st POST "$alr/rule/initiate" "$(rule_json 'Cloud resources' CLOUD_INVENTORY)")"
+evaluate > /dev/null
+check_equal 'a resource seen lately opens nothing' 0 "$(stb GET "$alr/retrieve?checkId=$vm" | count)"
+age "$vm"
+check_equal 'five days of silence: the inventory says MISSING' MISSING "$(stb GET "$inv_reg/$vm/retrieve" | json "['presence']")"
+evaluate > /dev/null
+check_equal 'the resource gets one alert and one incident' True "$(truth wait_for 20 linked "$vm")"
+check_equal 'the alert names the resource and the fixed code CLOUD_RESOURCE_MISSING, and carries no provider id' 'web-1/CLOUD_RESOURCE_MISSING/False' \
+  "$(alert_of "$vm" "['checkName']")/$(alert_of "$vm" "['lastError']")/$(stb GET "$alr/retrieve?checkId=$vm" | python3 -c "import sys; print('i-0missing' in sys.stdin.read())")"
+evaluate > /dev/null
+check_equal 'more evaluations open nothing more for the resource' 1 "$(stb GET "$alr/retrieve?checkId=$vm" | count)"
+report_resource i-0missing web-1 RUNNING > /dev/null
+check_equal 'the tool sees it again: PRESENT' PRESENT "$(stb GET "$inv_reg/$vm/retrieve" | json "['presence']")"
+evaluate > /dev/null
+check_equal 'seeing it again resolves the alert' True "$(truth wait_for 20 status_is "$vm" RESOLVED)"
+gone=$(api_body "$(report_resource i-0gone old-1 RUNNING)" | json "['id']")
+age "$gone"
+report_resource i-0gone old-1 TERMINATED > /dev/null
+check_equal 'a resource the tool said is terminated is GONE' GONE "$(stb GET "$inv_reg/$gone/retrieve" | json "['presence']")"
+evaluate > /dev/null
+check_equal 'a terminated resource opens nothing, however long ago it was seen' 0 "$(stb GET "$alr/retrieve?checkId=$gone" | count)"
 
 echo "Promises alerting smoke: $checks checks, $failed failed"
 [[ $failed -eq 0 ]]

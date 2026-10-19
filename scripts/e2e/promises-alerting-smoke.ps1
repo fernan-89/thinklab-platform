@@ -14,12 +14,15 @@
     (5) the promises kept again (a waiver, a newer sample) resolve both alerts and the incidents are not closed;
     (6) a vendor agreement about to end opens one alert and one incident (ADR-038), and a renewal resolves it;
     (7) a licence over its limit opens one alert and one incident (ADR-039), and freed seats resolve it;
-    (8) a recovery plan whose exercise failed opens one alert and one incident (ADR-041), and a later pass resolves it.
+    (8) a recovery plan whose exercise failed opens one alert and one incident (ADR-041), and a later pass resolves it;
+    (9) a cloud resource the tool has not seen for days opens one alert and one incident (ADR-042), seeing it again resolves it, and a terminated one opens nothing
+        (the smoke moves the moment the tool last saw the resource back in the store with docker exec on the MongoDB container, MONGO_CONTAINER, the way two days passing would).
 
     pwsh -File .\promises-alerting-smoke.ps1
 #>
 param(
-    [string]$GatewayUrl = 'http://localhost:8088'
+    [string]$GatewayUrl = 'http://localhost:8088',
+    [string]$MongoContainer = 'thinklab-mongo-1'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -50,7 +53,7 @@ function Assert-Equal {
 function Ahead([double]$Minutes) { (Get-Date).ToUniversalTime().AddMinutes($Minutes).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") }
 
 $alr = "$GatewayUrl/it-alerting/v1"; $pch = "$GatewayUrl/it-patch-registry/v1"; $cap = "$GatewayUrl/it-capacity-registry/v1"
-$bkp = "$GatewayUrl/it-backup-registry/v1"; $vnd = "$GatewayUrl/it-vendor-registry/v1"; $lic = "$GatewayUrl/it-license-registry/v1"; $dr = "$GatewayUrl/it-dr-registry/v1"; $inc = "$GatewayUrl/it-incident-management/v1"
+$bkp = "$GatewayUrl/it-backup-registry/v1"; $vnd = "$GatewayUrl/it-vendor-registry/v1"; $lic = "$GatewayUrl/it-license-registry/v1"; $dr = "$GatewayUrl/it-dr-registry/v1"; $invReg = "$GatewayUrl/it-cloud-inventory/v1"; $inc = "$GatewayUrl/it-incident-management/v1"
 $tenantId = [guid]::NewGuid().ToString()
 $user = [guid]::NewGuid().ToString(); $filedFor = [guid]::NewGuid().ToString()
 $patchAsset = [guid]::NewGuid().ToString(); $diskAsset = [guid]::NewGuid().ToString(); $backupAsset = [guid]::NewGuid().ToString()
@@ -164,6 +167,36 @@ Assert-Equal 'a later failover that passed inside the objectives is reported (20
 Assert-Equal 'the plan is READY again' (Invoke-Api GET "$dr/$plan/retrieve" $staff).Body.readiness 'READY'
 [void](Evaluate)
 Assert-Equal 'the pass resolves the alert' (Wait-For 20 { Status-Is $plan 'RESOLVED' }) $true
+
+# 9. A cloud resource that goes missing (ADR-042). The inventory judges a resource missing after 48 hours of silence, so the smoke moves the moment the tool last
+# saw it back in the store, the way two days passing would; everything else goes through the gateway.
+$account = [guid]::NewGuid().ToString()
+function Resource-Body([string]$ExternalId, [string]$Name, [string]$State) { @{ accountId = $account; provider = 'AWS'; externalId = $ExternalId; name = $Name; kind = 'COMPUTE'; region = 'us-east-1'; state = $State; tags = @{} } }
+function Report-Resource([string]$ExternalId, [string]$Name, [string]$State) { Invoke-Api POST "$invReg/initiate" $tool (Resource-Body $ExternalId $Name $State) }
+function Age([string]$Id) { docker exec $MongoContainer mongosh --quiet --eval "db.getSiblingDB('thinklab_it_cloud_inventory_db').cloud_resources.updateOne({_id: UUID('$Id')}, {`$set: {lastSeenAt: new Date(Date.now() - 5 * 24 * 3600 * 1000)}})" | Out-Null }
+$vm = (Report-Resource 'i-0missing' 'web-1' 'RUNNING').Body.id
+Assert-Equal 'a resource the tool saw just now is PRESENT' (Invoke-Api GET "$invReg/$vm/retrieve" $staff).Body.presence 'PRESENT'
+Assert-Equal 'a rule for the cloud inventory is set (201)' (Invoke-Api POST "$alr/rule/initiate" $staff (Rule-Body 'Cloud resources' 'CLOUD_INVENTORY')).Status 201
+[void](Evaluate)
+Assert-Equal 'a resource seen lately opens nothing' @((Invoke-Api GET "$alr/retrieve?checkId=$vm" $staff).Body).Count 0
+Age $vm
+Assert-Equal 'five days of silence: the inventory says MISSING' (Invoke-Api GET "$invReg/$vm/retrieve" $staff).Body.presence 'MISSING'
+[void](Evaluate)
+Assert-Equal 'the resource gets one alert and one incident' (Wait-For 20 { Linked $vm }) $true
+$vmAlert = AlertOf $vm
+Assert-Equal 'the alert names the resource and the fixed code CLOUD_RESOURCE_MISSING, and carries no provider id' "$($vmAlert.checkName)/$($vmAlert.lastError)/$((($vmAlert | ConvertTo-Json -Depth 6) -like '*i-0missing*'))" 'web-1/CLOUD_RESOURCE_MISSING/False'
+[void](Evaluate)
+Assert-Equal 'more evaluations open nothing more for the resource' @((Invoke-Api GET "$alr/retrieve?checkId=$vm" $staff).Body).Count 1
+[void](Report-Resource 'i-0missing' 'web-1' 'RUNNING')
+Assert-Equal 'the tool sees it again: PRESENT' (Invoke-Api GET "$invReg/$vm/retrieve" $staff).Body.presence 'PRESENT'
+[void](Evaluate)
+Assert-Equal 'seeing it again resolves the alert' (Wait-For 20 { Status-Is $vm 'RESOLVED' }) $true
+$gone = (Report-Resource 'i-0gone' 'old-1' 'RUNNING').Body.id
+Age $gone
+[void](Report-Resource 'i-0gone' 'old-1' 'TERMINATED')
+Assert-Equal 'a resource the tool said is terminated is GONE' (Invoke-Api GET "$invReg/$gone/retrieve" $staff).Body.presence 'GONE'
+[void](Evaluate)
+Assert-Equal 'a terminated resource opens nothing, however long ago it was seen' @((Invoke-Api GET "$alr/retrieve?checkId=$gone" $staff).Body).Count 0
 
 $results | Format-Table -AutoSize | Out-String | Write-Output
 $failed = @($results | Where-Object { $_.Result -eq 'FAIL' }).Count
