@@ -14,6 +14,7 @@ cap="$gateway/it-capacity-registry/v1"
 bkp="$gateway/it-backup-registry/v1"
 vnd="$gateway/it-vendor-registry/v1"
 lic="$gateway/it-license-registry/v1"
+dr="$gateway/it-dr-registry/v1"
 inc="$gateway/it-incident-management/v1"
 checks=0
 failed=0
@@ -135,6 +136,25 @@ check_equal 'the alert names the product and LICENSE_OVER_LIMIT' 'Office 365 E3/
 check_equal 'seats are freed: 9 in use is reported (201)' 201 "$(api_status "$(api POST "$lic/usage/initiate" "{\"licenseId\":\"$license\",\"inUse\":9,\"measuredAt\":\"$(count_at 1)\"}" "${tool[@]}")")"
 evaluate > /dev/null
 check_equal 'back within the limit (NEAR_LIMIT is not an incident): the alert is resolved' True "$(truth wait_for 20 status_is "$license" RESOLVED)"
+
+# 8. A recovery plan that stops being ready (ADR-041): a failed exercise opens one alert and one incident, a later pass resolves it.
+plan=$(stb POST "$dr/initiate" "{\"name\":\"Orders failover\",\"assetId\":\"$patch_asset\",\"strategy\":\"WARM_STANDBY\",\"rtoMinutes\":120,\"rpoMinutes\":30,\"testEveryDays\":30}" | json "['id']")
+check_equal 'a plan never exercised is NEVER_TESTED' NEVER_TESTED "$(stb GET "$dr/$plan/retrieve" | json "['readiness']")"
+check_equal 'a rule for the DR registry is set (201)' 201 "$(st POST "$alr/rule/initiate" "$(rule_json 'Recovery plans' DR)")"
+evaluate > /dev/null
+check_equal 'a plan never exercised is not judged: nothing opens' 0 "$(stb GET "$alr/retrieve?checkId=$plan" | count)"
+check_equal 'a failover that failed is reported with its fixed reason (201)' 201 "$(api_status "$(api POST "$dr/exercise/initiate" "{\"planId\":\"$plan\",\"kind\":\"FAILOVER\",\"outcome\":\"FAILED\",\"startedAt\":\"$(minutes -120)\",\"finishedAt\":\"$(minutes -100)\",\"failureReason\":\"DEPENDENCY_MISSING\"}" "${tool[@]}")")"
+check_equal 'the plan is LAST_EXERCISE_FAILED' LAST_EXERCISE_FAILED "$(stb GET "$dr/$plan/retrieve" | json "['readiness']")"
+evaluate > /dev/null
+check_equal 'the plan gets one alert and one incident' True "$(truth wait_for 20 linked "$plan")"
+check_equal 'the alert names the plan and the fixed code DR_EXERCISE_FAILED, and the incident says a promise is not being kept' 'Orders failover/DR_EXERCISE_FAILED/Promise broken: Orders failover/True' \
+  "$(alert_of "$plan" "['checkName']")/$(alert_of "$plan" "['lastError']")/$(stb GET "$inc/$(alert_of "$plan" "['incidentId']")/retrieve" | json "['title']")/$(stb GET "$inc/$(alert_of "$plan" "['incidentId']")/retrieve" | python3 -c "import json,sys; print('is not being kept (DR_EXERCISE_FAILED)' in json.load(sys.stdin)['description'])")"
+evaluate > /dev/null
+check_equal 'more evaluations open nothing more for the plan' 1 "$(stb GET "$alr/retrieve?checkId=$plan" | count)"
+check_equal 'a later failover that passed inside the objectives is reported (201)' 201 "$(api_status "$(api POST "$dr/exercise/initiate" "{\"planId\":\"$plan\",\"kind\":\"FAILOVER\",\"outcome\":\"SUCCEEDED\",\"startedAt\":\"$(minutes -60)\",\"finishedAt\":\"$(minutes -30)\",\"dataLossMinutes\":5}" "${tool[@]}")")"
+check_equal 'the plan is READY again' READY "$(stb GET "$dr/$plan/retrieve" | json "['readiness']")"
+evaluate > /dev/null
+check_equal 'the pass resolves the alert' True "$(truth wait_for 20 status_is "$plan" RESOLVED)"
 
 echo "Promises alerting smoke: $checks checks, $failed failed"
 [[ $failed -eq 0 ]]

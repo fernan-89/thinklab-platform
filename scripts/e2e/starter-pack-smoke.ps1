@@ -3,7 +3,7 @@
   Live proof of the starter pack of alert rules (scripts/stack/seed-starter-pack.ps1) through the platform gateway (PowerShell port of starter-pack-smoke.sh).
 
 .DESCRIPTION
-  An edition gets its rules (Homelab 2, Team 4, Enterprise 6), each watching every policy of its source and taking the class of that source; running it
+  An edition gets its rules (Homelab 2, Team 5, Enterprise 7), each watching every policy of its source and taking the class of that source; running it
   again creates nothing; moving up an edition adds only what is missing; a rule a person paused stays paused; another tenant has none of it; an unknown
   edition or a missing argument is refused (the PowerShell script refuses them when it binds its parameters, so the exit code is 1, not the 2 of the bash one).
 
@@ -63,19 +63,19 @@ Assert-Equal 'no rule names a webhook' (@($rules | Where-Object { $_.notifyTarge
 $health = (@($rules | Where-Object { -not $_.source -or $_.source -eq 'HEALTH_CHECK' }) | Select-Object -First 1).id
 Assert-Equal 'a person can pause a rule (204)' (Invoke-Api PUT "$alr/rule/$health/control/pause" $staff).Status 204
 $run = Pack 'TEAM'
-Assert-Equal 'Team keeps the two and adds two' "$($run.Code)/$($run.Last)" '0/TEAM: 2 created, 2 already there, 0 failed'
-Assert-Equal 'now backups and patches are watched too' (Sources) 'BACKUP,CAPACITY,HEALTH_CHECK,PATCH'
+Assert-Equal 'Team keeps the two and adds three' "$($run.Code)/$($run.Last)" '0/TEAM: 3 created, 2 already there, 0 failed'
+Assert-Equal 'now backups, patches and recovery plans are watched too' (Sources) 'BACKUP,CAPACITY,DR,HEALTH_CHECK,PATCH'
 Assert-Equal 'the rule that was paused is still paused' (Invoke-Api GET "$alr/rule/$health/retrieve" $staff).Body.status 'PAUSED'
 
 # 3. Again: nothing to create.
 $run = Pack 'TEAM'
-Assert-Equal 'running Team again creates nothing' "$($run.Code)/$($run.Last)" '0/TEAM: 0 created, 4 already there, 0 failed'
-Assert-Equal 'still four rules' (Rules).Count 4
+Assert-Equal 'running Team again creates nothing' "$($run.Code)/$($run.Last)" '0/TEAM: 0 created, 5 already there, 0 failed'
+Assert-Equal 'still five rules' (Rules).Count 5
 
 # 4. Enterprise.
 $run = Pack 'ENTERPRISE'
-Assert-Equal 'Enterprise adds the vendor and licence rules' "$($run.Code)/$($run.Last)" '0/ENTERPRISE: 2 created, 4 already there, 0 failed'
-Assert-Equal 'six rules, all six sources' (Sources) 'BACKUP,CAPACITY,HEALTH_CHECK,LICENSE,PATCH,VENDOR'
+Assert-Equal 'Enterprise adds the vendor and licence rules' "$($run.Code)/$($run.Last)" '0/ENTERPRISE: 2 created, 5 already there, 0 failed'
+Assert-Equal 'seven rules, all seven sources' (Sources) 'BACKUP,CAPACITY,DR,HEALTH_CHECK,LICENSE,PATCH,VENDOR'
 Assert-Equal 'the contract rules are CONTRACT' ((@(Rules | Where-Object { $_.source -in 'VENDOR', 'LICENSE' } | ForEach-Object { $_.alertClass })) -join ',') 'CONTRACT,CONTRACT'
 
 # 5. The tenant, and a wrong call.
