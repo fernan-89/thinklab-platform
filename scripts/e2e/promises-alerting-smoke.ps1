@@ -12,7 +12,8 @@
         code and the asset of the policy; a second evaluation opens nothing;
     (4) a backup that has never run is not judged: a rule for the backup registry opens nothing;
     (5) the promises kept again (a waiver, a newer sample) resolve both alerts and the incidents are not closed;
-    (6) a vendor agreement about to end opens one alert and one incident (ADR-038), and a renewal resolves it.
+    (6) a vendor agreement about to end opens one alert and one incident (ADR-038), and a renewal resolves it;
+    (7) a licence over its limit opens one alert and one incident (ADR-039), and freed seats resolve it.
 
     pwsh -File .\promises-alerting-smoke.ps1
 #>
@@ -48,7 +49,7 @@ function Assert-Equal {
 function Ahead([double]$Minutes) { (Get-Date).ToUniversalTime().AddMinutes($Minutes).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") }
 
 $alr = "$GatewayUrl/it-alerting/v1"; $pch = "$GatewayUrl/it-patch-registry/v1"; $cap = "$GatewayUrl/it-capacity-registry/v1"
-$bkp = "$GatewayUrl/it-backup-registry/v1"; $vnd = "$GatewayUrl/it-vendor-registry/v1"; $inc = "$GatewayUrl/it-incident-management/v1"
+$bkp = "$GatewayUrl/it-backup-registry/v1"; $vnd = "$GatewayUrl/it-vendor-registry/v1"; $lic = "$GatewayUrl/it-license-registry/v1"; $inc = "$GatewayUrl/it-incident-management/v1"
 $tenantId = [guid]::NewGuid().ToString()
 $user = [guid]::NewGuid().ToString(); $filedFor = [guid]::NewGuid().ToString()
 $patchAsset = [guid]::NewGuid().ToString(); $diskAsset = [guid]::NewGuid().ToString(); $backupAsset = [guid]::NewGuid().ToString()
@@ -128,6 +129,19 @@ Assert-Equal 'the warranty is renewed for two years (204)' (Invoke-Api PUT "$vnd
 [void](Evaluate)
 Assert-Equal 'the renewal resolves the alert' (Wait-For 20 { Status-Is $agreement 'RESOLVED' }) $true
 Assert-Equal 'the alert is RESOLVED' (AlertOf $agreement).status 'RESOLVED'
+
+# 7. A licence over its limit (ADR-039): one alert and one incident; seats freed resolve it.
+function CountAt([int]$Minutes) { (Get-Date).ToUniversalTime().AddMinutes(-$Minutes).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") }
+$license = (Invoke-Api POST "$lic/initiate" $staff @{ product = 'Office 365 E3'; unit = 'USER'; entitled = 10; warnPercent = 90; reportEveryHours = 24 }).Body.id
+Assert-Equal '12 seats in use of 10 bought is OVER_LIMIT' "$((Invoke-Api POST "$lic/usage/initiate" $tool @{ licenseId = $license; inUse = 12; measuredAt = (CountAt 10) }).Status)/$((Invoke-Api GET "$lic/$license/retrieve" $staff).Body.level)" '201/OVER_LIMIT'
+Assert-Equal 'a rule for the licence registry is set (201)' (Invoke-Api POST "$alr/rule/initiate" $staff (Rule-Body 'Licences' 'LICENSE')).Status 201
+[void](Evaluate)
+Assert-Equal 'the licence over its limit gets one alert and one incident' (Wait-For 20 { Linked $license }) $true
+$licenseAlert = AlertOf $license
+Assert-Equal 'the alert names the product and LICENSE_OVER_LIMIT' "$($licenseAlert.checkName)/$($licenseAlert.lastError)" 'Office 365 E3/LICENSE_OVER_LIMIT'
+Assert-Equal 'seats are freed: 9 in use is reported (201)' (Invoke-Api POST "$lic/usage/initiate" $tool @{ licenseId = $license; inUse = 9; measuredAt = (CountAt 1) }).Status 201
+[void](Evaluate)
+Assert-Equal 'back within the limit (NEAR_LIMIT is not an incident): the alert is resolved' (Wait-For 20 { Status-Is $license 'RESOLVED' }) $true
 
 $results | Format-Table -AutoSize | Out-String | Write-Output
 $failed = @($results | Where-Object { $_.Result -eq 'FAIL' }).Count

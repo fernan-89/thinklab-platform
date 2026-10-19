@@ -4,7 +4,8 @@
 # disk each open ONE alert and ONE incident that says a promise is not being kept, with a fixed error code; a second evaluation opens nothing; a
 # registry no active rule watches is not judged (a backup that never ran opens nothing); a rule for one policy covers only that policy; the promise
 # kept again (a waiver, a newer sample) resolves the alert and puts an internal note on the incident; rules keep their source; staff only. Then
-# (ADR-038) a vendor agreement about to end opens one alert and a renewal resolves it.
+# (ADR-038) a vendor agreement about to end opens one alert and a renewal resolves it, and (ADR-039) a licence over its limit opens one alert
+# and freed seats resolve it.
 set -uo pipefail
 gateway="${GATEWAY_URL:-http://localhost:8088}"
 alr="$gateway/it-alerting/v1"
@@ -12,6 +13,7 @@ pch="$gateway/it-patch-registry/v1"
 cap="$gateway/it-capacity-registry/v1"
 bkp="$gateway/it-backup-registry/v1"
 vnd="$gateway/it-vendor-registry/v1"
+lic="$gateway/it-license-registry/v1"
 inc="$gateway/it-incident-management/v1"
 checks=0
 failed=0
@@ -120,6 +122,19 @@ check_equal 'the warranty is renewed for two years (204)' 204 "$(st PUT "$vnd/ag
 evaluate > /dev/null
 check_equal 'the renewal resolves the alert' True "$(truth wait_for 20 status_is "$agreement" RESOLVED)"
 check_equal 'the alert is RESOLVED' RESOLVED "$(alert_of "$agreement" "['status']")"
+
+# 7. A licence over its limit (ADR-039): one alert and one incident; seats freed resolve it.
+license=$(stb POST "$lic/initiate" '{"product":"Office 365 E3","unit":"USER","entitled":10,"warnPercent":90,"reportEveryHours":24}' | json "['id']")
+count_at() { python3 -c "import datetime,sys; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=int(sys.argv[1]))).strftime('%Y-%m-%dT%H:%M:%SZ'))" "$1"; }
+check_equal '12 seats in use of 10 bought is OVER_LIMIT' '201/OVER_LIMIT' \
+  "$(api_status "$(api POST "$lic/usage/initiate" "{\"licenseId\":\"$license\",\"inUse\":12,\"measuredAt\":\"$(count_at 10)\"}" "${tool[@]}")")/$(stb GET "$lic/$license/retrieve" | json "['level']")"
+check_equal 'a rule for the licence registry is set (201)' 201 "$(st POST "$alr/rule/initiate" "$(rule_json 'Licences' LICENSE)")"
+evaluate > /dev/null
+check_equal 'the licence over its limit gets one alert and one incident' True "$(truth wait_for 20 linked "$license")"
+check_equal 'the alert names the product and LICENSE_OVER_LIMIT' 'Office 365 E3/LICENSE_OVER_LIMIT' "$(alert_of "$license" "['checkName']")/$(alert_of "$license" "['lastError']")"
+check_equal 'seats are freed: 9 in use is reported (201)' 201 "$(api_status "$(api POST "$lic/usage/initiate" "{\"licenseId\":\"$license\",\"inUse\":9,\"measuredAt\":\"$(count_at 1)\"}" "${tool[@]}")")"
+evaluate > /dev/null
+check_equal 'back within the limit (NEAR_LIMIT is not an incident): the alert is resolved' True "$(truth wait_for 20 status_is "$license" RESOLVED)"
 
 echo "Promises alerting smoke: $checks checks, $failed failed"
 [[ $failed -eq 0 ]]
