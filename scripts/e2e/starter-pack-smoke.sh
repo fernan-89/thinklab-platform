@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Live proof of the starter pack of alert rules (scripts/stack/seed-starter-pack.sh) through the platform gateway: an edition gets its rules (Homelab 2,
-# Team 5, Enterprise 7), each watching every policy of its source and taking the class of that source; running it again creates nothing; moving up an
+# Team 5, Enterprise 8), each watching every policy of its source and taking the class of that source; running it again creates nothing; moving up an
 # edition adds only what is missing; a rule a person paused stays paused; another tenant has none of it; an unknown edition or a missing argument
 # exits 2.
 set -uo pipefail
@@ -67,10 +67,11 @@ check_equal 'still five rules' 5 "$(rules | count)"
 
 # 4. Enterprise.
 out=$("$pack" ENTERPRISE "$tenant_id" "$requester" 2>&1); status=$?
-check_equal 'Enterprise adds the vendor and licence rules' '0/ENTERPRISE: 2 created, 5 already there, 0 failed' "$status/$(last_line "$out")"
-check_equal 'seven rules, all seven sources' 'BACKUP,CAPACITY,DR,HEALTH_CHECK,LICENSE,PATCH,VENDOR' "$(sources)"
+check_equal 'Enterprise adds the vendor, licence and cloud resource rules' '0/ENTERPRISE: 3 created, 5 already there, 0 failed' "$status/$(last_line "$out")"
+check_equal 'eight rules, all eight sources' 'BACKUP,CAPACITY,CLOUD_INVENTORY,DR,HEALTH_CHECK,LICENSE,PATCH,VENDOR' "$(sources)"
 check_equal 'the contract rules are CONTRACT' 'CONTRACT,CONTRACT' \
   "$(rules | python3 -c "import json,sys; print(','.join(r['alertClass'] for r in json.load(sys.stdin) if r.get('source') in ('VENDOR','LICENSE')))")"
+check_equal 'the cloud resource rule is AVAILABILITY' AVAILABILITY "$(rules | python3 -c "import json,sys; print(','.join(r['alertClass'] for r in json.load(sys.stdin) if r.get('source') == 'CLOUD_INVENTORY'))")"
 
 # 5. The tenant, and a wrong call.
 other=("X-Tenant-Id: $(uuid)" 'X-Executor: smoke')
