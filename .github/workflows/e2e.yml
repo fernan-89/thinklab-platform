@@ -166,6 +166,12 @@ jobs:
       - name: Promises alerting smoke (a rule watches the patch, capacity or backup registry, a broken promise opens one alert and one incident with a fixed code, a backup that never ran opens nothing, a promise kept again resolves the alert, staff only)
         run: thinklab-platform/scripts/e2e/promises-alerting-smoke.sh
 
+      - name: Starter pack smoke (an edition gets its alert rules, Homelab 2, Team 4, Enterprise 6, each taking the class of its source; a repeat creates nothing, moving up adds only what is missing, a paused rule stays paused, another tenant has none)
+        run: thinklab-platform/scripts/e2e/starter-pack-smoke.sh
+
+      - name: Netdata connector smoke (against a test double of an agent, the node reaches the discovery queue once, a chart becomes a capacity sample with its dimensions added up and a factor, a failing chart or an unreachable agent fails only what it must, the token is sent and never printed)
+        run: thinklab-platform/scripts/e2e/netdata-connector-smoke.sh
+
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/billing-smoke.sh
 
