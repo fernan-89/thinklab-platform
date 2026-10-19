@@ -1,0 +1,8 @@
+{
+  "netdata": "http://localhost:19999",
+  "nodes": true,
+  "samples": [
+    { "policyId": "<capacity policy id for memory>", "chart": "system.ram", "dimensions": ["used", "buffers"], "factor": 1.0 },
+    { "policyId": "<capacity policy id for the root disk>", "chart": "disk_space./", "dimensions": ["used"], "factor": 1.0 }
+  ]
+}
