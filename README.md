@@ -45,6 +45,7 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | it-license-registry | 8109 | `micronaut-it-license-registry-service` |
 | it-ipam | 8110 | `micronaut-it-ipam-service` |
 | it-cloud-cost | 8111 | `micronaut-it-cloud-cost-service` |
+| it-dr-registry | 8112 | `micronaut-it-dr-registry-service` |
 
 Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
 transactional outbox needs) and NATS JetStream (the event backbone: party-authentication publishes
@@ -68,14 +69,22 @@ scripts/stack/wait-ready.sh      # waits for /health/readiness on every service
 The web app (`../thinklab-web`) is behind a compose profile so the commands above never need it:
 `docker compose --profile web up -d --build` serves it on http://localhost:3000 (`scripts/e2e/seed-demo.ps1` creates a demo tenant to sign in with).
 
-### Homelab edition and its memory
+### Editions and their memory
 
-`scripts/stack/homelab.sh up` starts only what a home lab needs (MongoDB, NATS, sign-in, assets, discovery, health checks, capacity, incidents, alerting, the gateway),
-with a 160 MiB heap per service and 256 MiB for the gateway (`THINKLAB_JAVA_OPTS`, `THINKLAB_GATEWAY_JAVA_OPTS`); the images must already be built. A route of a service that is
-not started answers 502. `scripts/stack/homelab.sh footprint` adds up the memory of those containers and exits 1 over `THINKLAB_FOOTPRINT_BUDGET_MIB` (default 2560).
+`scripts/stack/edition.sh <homelab|team|enterprise> up|down|footprint|services` (`edition.ps1`) starts only the services of an edition, each containing the one before it
+(`homelab.sh` and `homelab.ps1` are `edition homelab`); the images must already be built. A route of a service that is not started answers 502.
 
-Measured on 2026-10-19 (12 containers, a fresh start, a capacity smoke run against it): **about 2.0-2.1 GiB**, against about 3.9 GiB for the 16 containers of the usual
-stack (250 MiB heaps; extrapolated, about 8 GiB for all of it). The gateway was the surprise: it had no heap cap at all and started at 1.1 GiB.
+| Edition | Services | Heap per service | Measured idle | Budget `footprint` allows |
+|---|---|---|---|---|
+| `homelab` | 12: MongoDB, NATS, sign-in, assets, discovery, health checks, capacity, incidents, alerting, the gateway | 160 MiB | 2.1 GiB | 2560 MiB |
+| `team` | 28: also sites, maintenance windows and hardware maintenance, change management and its approvals, requests, problems, knowledge base, topology graph, type catalog, notifications, and the backup, patch, DR, vendor and licence registries | 192 MiB | 5.0 GiB | 6144 MiB |
+| `enterprise` | 36: everything the compose file starts, also the audit ledger and its anchor store, plans and subscriptions, consumables, single sign-on, the Jira and ServiceNow connector, IPAM and cloud costs | 256 MiB (the compose default) | 7.3 GiB | 9216 MiB |
+
+Measured on 2026-10-19, each edition started from nothing in its own compose project (own MongoDB 7.0, no published ports), then 90 to 150 seconds idle
+once every container was up, nothing restarting. The gateway has a 256 MiB heap in all three (it had no cap at all and started at 1.1 GiB). In `enterprise`,
+413 MiB is the `anchor-store`, a LocalStack standing in for S3 with Object Lock; against a real bucket it is not part of the stack. These are idle numbers:
+a service under load grows to its heap. Heaps are set with `THINKLAB_JAVA_OPTS` and `THINKLAB_GATEWAY_JAVA_OPTS`, the budget with
+`THINKLAB_FOOTPRINT_BUDGET_MIB`; `footprint` exits 1 over it.
 
 ### Starter pack of alert rules
 
@@ -95,14 +104,14 @@ was changed or paused. No rule names a webhook, since the environment variables 
 
 ### Netdata connector
 
-`scripts/connectors/netdata-sync.sh <config.json> <organisationId>` reads one Netdata agent and reports to ThinkLab through the gateway. It runs outside the
+`scripts/connectors/netdata-sync.sh <config.json> <organisationId>` (`netdata-sync.ps1 -Config ... -OrganisationId ...`) reads one Netdata agent and reports to ThinkLab through the gateway. It runs outside the
 services, as the tool that measures (capacity-registry ADR-030): no ThinkLab service reaches an asset or holds a credential. Copy
 `scripts/connectors/netdata.example.json` and fill in your capacity policy ids.
 
 - **The node** goes to the discovery queue (`source: netdata`, keyed by the agent's id). A person still reviews and promotes it; a second run is a re-sighting, not a second item.
 - **Each entry of `samples`** becomes one capacity sample: the chart's average over the last seconds, the named dimensions added up, times `factor`. The policy's limit and the sample must use the same unit, and the unit is Netdata's (`system.ram` is MiB, `disk_space` GiB). The moment is rounded to the minute, so two runs in a minute report one sample.
 - **Alerts are not mirrored.** The samples feed the capacity policies, which the alerting service already watches (a `CAPACITY` rule).
-- `NETDATA_TOKEN`, if the agent asks for one, is sent as a bearer token and never written anywhere. Run it from cron or a loop; it exits 1 if anything failed, 2 on bad usage. Bash only for now (no `.ps1`).
+- `NETDATA_TOKEN`, if the agent asks for one, is sent as a bearer token and never written anywhere. Run it from cron or a loop; it exits 1 if anything failed, 2 on bad usage.
 
 The images package each service's `installDist` output, so nothing is compiled inside Docker and no
 credential reaches an image. The build needs `micronaut-thinklab-service-kit` from GitHub Packages: export
@@ -130,8 +139,9 @@ With the stack up (either way):
 | Script | What it checks |
 |---|---|
 | `scripts/e2e/run-e2e.sh` (`run-e2e.ps1`) | every service's Postman suite (`docs/postman` in each repo), in dependency order, threading the `organisationId` created by the Party Reference Data Directory suite into the others |
-| `scripts/e2e/starter-pack-smoke.sh` | the starter pack of alert rules through the gateway: an edition gets its rules (Homelab 2, Team 4, Enterprise 6), each taking the class of its source, a repeat creates nothing, moving up adds only what is missing, a paused rule stays paused, another tenant has none, a wrong call exits 2 |
-| `scripts/e2e/netdata-connector-smoke.sh` | the Netdata connector against a test double of an agent (`mock-netdata.mjs`, started by the script): the node reaches the discovery queue once, a chart becomes a capacity sample (dimensions added up, a factor), a failing chart or an unreachable agent fails only what it must, the token is sent and never printed |
+| `scripts/e2e/starter-pack-smoke.sh` (`starter-pack-smoke.ps1`) | the starter pack of alert rules through the gateway: an edition gets its rules (Homelab 2, Team 4, Enterprise 6), each taking the class of its source, a repeat creates nothing, moving up adds only what is missing, a paused rule stays paused, another tenant has none, a wrong call exits 2 |
+| `scripts/e2e/netdata-connector-smoke.sh` (`netdata-connector-smoke.ps1`) | the Netdata connector against a test double of an agent (`mock-netdata.mjs`, started by the script): the node reaches the discovery queue once, a chart becomes a capacity sample (dimensions added up, a factor), a failing chart or an unreachable agent fails only what it must, the token is sent and never printed |
+| `scripts/e2e/dr-smoke.sh` (`dr-smoke.ps1`) | the DR registry through the gateway (DR registry ADR-030..033): a recovery plan judged when read, a walk through the runbook that counts as a pass but measures nothing, a failover and a full recovery that measure the recovery time and point, twenty reports of one exercise make one, a later pass clears a failure and a late report moves nothing, a backup-restore plan that cannot promise to lose nothing, the runbook as an identifier, a race between two people, staff only, every mutation recorded on the ledger |
 | `scripts/e2e/events-smoke.sh` (`events-smoke.ps1`) | creating a user publishes `user.initiated` through the outbox and NATS, and notification-dispatch delivers the welcome notification |
 | `scripts/e2e/hardware-maintenance-smoke.sh` (`hardware-maintenance-smoke.ps1`) | starting a WorkOrder repair moves the Asset into MAINTENANCE and passing quality check moves it back to DEPLOYED, both through NATS |
 | `scripts/e2e/ledger-smoke.sh` (`ledger-smoke.ps1`) | the gateway records every mutating request on the compliance ledger and the hash chain verifies, anchoring included |

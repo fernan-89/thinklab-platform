@@ -24,29 +24,52 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
-      # The Homelab edition (scripts/stack/homelab.sh) names the services it starts: every one must still be defined in docker-compose.yml, or
+      # The editions (scripts/stack/edition.sh) name the services they start: every one must still be defined in docker-compose.yml, or
       # `up` would fail on a machine that tries it. Memory is measured by hand, not here (it needs the images built).
-      - name: Every service of the Homelab set is in docker-compose.yml
+      - name: Every service of every edition is in docker-compose.yml, and each edition contains the one before it
         run: |
           defined=$(docker compose -f docker-compose.yml config --services)
           missing=0
-          for service in $(scripts/stack/homelab.sh services); do
-            if ! grep -qx "$service" <<<"$defined"; then echo "not in docker-compose.yml: $service"; missing=1; fi
+          for edition in homelab team enterprise; do
+            for service in $(scripts/stack/edition.sh "$edition" services); do
+              if ! grep -qx "$service" <<<"$defined"; then echo "not in docker-compose.yml: $service ($edition)"; missing=1; fi
+            done
+            echo "$edition: $(scripts/stack/edition.sh "$edition" services | wc -l) services"
+          done
+          for pair in "homelab team" "team enterprise"; do
+            set -- $pair
+            for service in $(scripts/stack/edition.sh "$1" services); do
+              scripts/stack/edition.sh "$2" services | grep -qx "$service" || { echo "$service is in $1 but not in $2"; missing=1; }
+            done
           done
           [ "$missing" -eq 0 ]
-          echo "$(scripts/stack/homelab.sh services | wc -l) services, all defined"
-      - name: Homelab turns an unknown command away
+      - name: An edition turns an unknown command, and an unknown edition, away
         run: |
           set +e
-          scripts/stack/homelab.sh nonsense >/dev/null 2>&1
+          scripts/stack/edition.sh homelab nonsense >/dev/null 2>&1
           [ "$?" -eq 2 ]
-      - name: The Homelab heap can be set from the environment, the default is unchanged
+          scripts/stack/edition.sh cloud up >/dev/null 2>&1
+          [ "$?" -eq 2 ]
+      - name: The JVM options can be set from the environment, the default is unchanged
         run: |
           docker compose -f docker-compose.yml config | grep -c 'JAVA_TOOL_OPTIONS: -Xmx256m' | grep -qv '^0$'
           THINKLAB_JAVA_OPTS='-Xmx160m' docker compose -f docker-compose.yml config | grep -q 'JAVA_TOOL_OPTIONS: -Xmx160m'
+      # PowerShell is on the runner. A script that does not parse would only be found by someone on Windows.
+      - name: The PowerShell scripts parse
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path scripts -Recurse -Filter *.ps1
+          $bad = 0
+          foreach ($file in $files) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $bad++; Write-Output "$($file.FullName): $($errors[0].Message)" }
+          }
+          Write-Output "$($files.Count) scripts, $bad that do not parse"
+          if ($bad -gt 0) { exit 1 }
       - name: The new scripts parse
         run: |
-          for script in scripts/stack/homelab.sh scripts/stack/seed-starter-pack.sh scripts/connectors/netdata-sync.sh \
-                        scripts/e2e/starter-pack-smoke.sh scripts/e2e/netdata-connector-smoke.sh; do
+          for script in scripts/stack/edition.sh scripts/stack/homelab.sh scripts/stack/seed-starter-pack.sh scripts/connectors/netdata-sync.sh \
+                        scripts/e2e/starter-pack-smoke.sh scripts/e2e/netdata-connector-smoke.sh scripts/e2e/dr-smoke.sh; do
             bash -n "$script"
           done

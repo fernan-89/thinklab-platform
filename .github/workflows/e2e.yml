@@ -163,6 +163,9 @@ jobs:
       - name: Cloud cost smoke (an account in one currency judged when read over the month with a straight line to its end, twenty reports of one day and amount make one report, a correction counts and going back to an earlier amount counts again, last month stays out, a day at most one ahead, nothing a tool says is repeated, two people pausing at once, staff only, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/cloud-cost-smoke.sh
 
+      - name: DR smoke (a recovery plan judged when read as NEVER_TESTED, READY, OBJECTIVE_MISSED, LAST_EXERCISE_FAILED or overdue, a walk through the runbook counts as a pass but measures nothing, twenty reports of one exercise make one exercise, a later pass clears a failure and a late report moves nothing forward, a backup-restore plan cannot promise to lose nothing, the runbook is an identifier, two people pausing at once get one winner, staff only, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/dr-smoke.sh
+
       - name: Promises alerting smoke (a rule watches the patch, capacity or backup registry, a broken promise opens one alert and one incident with a fixed code, a backup that never ran opens nothing, a promise kept again resolves the alert, staff only)
         run: thinklab-platform/scripts/e2e/promises-alerting-smoke.sh
 
