@@ -93,6 +93,17 @@ It is only rules: capacity, backup and patch policies are about one asset and a 
 again keeps what is there and adds what is missing (moving a tenant from `HOMELAB` to `TEAM` adds the two new rules), and it never touches a rule that
 was changed or paused. No rule names a webhook, since the environment variables are the deployment's: add `notifyTarget` with `rule/update`.
 
+### Netdata connector
+
+`scripts/connectors/netdata-sync.sh <config.json> <organisationId>` reads one Netdata agent and reports to ThinkLab through the gateway. It runs outside the
+services, as the tool that measures (capacity-registry ADR-030): no ThinkLab service reaches an asset or holds a credential. Copy
+`scripts/connectors/netdata.example.json` and fill in your capacity policy ids.
+
+- **The node** goes to the discovery queue (`source: netdata`, keyed by the agent's id). A person still reviews and promotes it; a second run is a re-sighting, not a second item.
+- **Each entry of `samples`** becomes one capacity sample: the chart's average over the last seconds, the named dimensions added up, times `factor`. The policy's limit and the sample must use the same unit, and the unit is Netdata's (`system.ram` is MiB, `disk_space` GiB). The moment is rounded to the minute, so two runs in a minute report one sample.
+- **Alerts are not mirrored.** The samples feed the capacity policies, which the alerting service already watches (a `CAPACITY` rule).
+- `NETDATA_TOKEN`, if the agent asks for one, is sent as a bearer token and never written anywhere. Run it from cron or a loop; it exits 1 if anything failed, 2 on bad usage. Bash only for now (no `.ps1`).
+
 The images package each service's `installDist` output, so nothing is compiled inside Docker and no
 credential reaches an image. The build needs `micronaut-thinklab-service-kit` from GitHub Packages: export
 `GITHUB_ACTOR` and `GITHUB_TOKEN` (a token with `read:packages`), or publish the kit to your local
