@@ -18,6 +18,8 @@ lic="$gateway/it-license-registry/v1"
 dr="$gateway/it-dr-registry/v1"
 inv_reg="$gateway/it-cloud-inventory/v1"
 mongo_container="${MONGO_CONTAINER:-thinklab-mongo-1}"
+po="$gateway/it-procurement/v1"
+policy_file="${POLICY_FILE:-$(dirname "$0")/../../.e2e/procurement-policy.json}"
 inc="$gateway/it-incident-management/v1"
 checks=0
 failed=0
@@ -188,6 +190,43 @@ report_resource i-0gone old-1 TERMINATED > /dev/null
 check_equal 'a resource the tool said is terminated is GONE' GONE "$(stb GET "$inv_reg/$gone/retrieve" | json "['presence']")"
 evaluate > /dev/null
 check_equal 'a terminated resource opens nothing, however long ago it was seen' 0 "$(stb GET "$alr/retrieve?checkId=$gone" | count)"
+
+# 10. A purchase order that is late (ADR-043). An order cannot be drafted with an expected day in the past, so the smoke moves the expected day of a placed order
+# back in the store (docker exec, as for section 9); the approval goes through the REAL approval service with the purchase-order policy.
+[[ -f "$policy_file" ]] || { echo "Missing $policy_file - run provision-change-management.sh first." >&2; exit 1; }
+approver=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['approverIds'][0])" "$policy_file")
+order_body() { printf '{"reference":"%s","vendorId":"%s","requesterId":"%s","currency":"BRL","expectedOn":"%s","lines":[{"category":"HARDWARE","item":"LAP-14","quantity":10,"unitPrice":1500.00}]}' "$1" "$(uuid)" "$filed_for" "$(python3 -c "import datetime; print((datetime.date.today() + datetime.timedelta(days=5)).isoformat())")"; }
+placed_order() {
+  local id; id=$(stb POST "$po/initiate" "$(order_body "$1")" | json "['id']")
+  st PUT "$po/$id/control/submit" > /dev/null
+  api_status "$(api PUT "$po/$id/approval/capture" "{\"approverId\":\"$approver\",\"outcome\":\"APPROVE\"}" "${staff[@]}")" > /dev/null
+  st PUT "$po/$id/control/place" > /dev/null
+  echo "$id"
+}
+postpone() { docker exec "$mongo_container" mongosh --quiet --eval "db.getSiblingDB('thinklab_it_procurement_db').purchase_orders.updateOne({_id: UUID('$1')}, {\$set: {expectedOn: '$(python3 -c "import datetime; print((datetime.date.today() - datetime.timedelta(days=3)).isoformat())")'}})" > /dev/null; }
+order=$(placed_order PO-LATE-1)
+check_equal 'a placed order is not late while its expected day is ahead' 'ORDERED/False' "$(stb GET "$po/$order/retrieve" | json "['status']")/$(stb GET "$po/$order/retrieve" | json "['late']")"
+check_equal 'a rule for the procurement registry is set (201)' 201 "$(st POST "$alr/rule/initiate" "$(rule_json 'Purchase orders' PROCUREMENT)")"
+evaluate > /dev/null
+check_equal 'an order that is not late opens nothing' 0 "$(stb GET "$alr/retrieve?checkId=$order" | count)"
+postpone "$order"
+check_equal 'three days past the expected day: the registry says it is late' True "$(stb GET "$po/$order/retrieve" | json "['late']")"
+evaluate > /dev/null
+check_equal 'the order gets one alert and one incident' True "$(truth wait_for 20 linked "$order")"
+check_equal 'the alert names the order and the fixed code PURCHASE_ORDER_LATE, and carries no vendor or item' 'PO-LATE-1/PURCHASE_ORDER_LATE/False' \
+  "$(alert_of "$order" "['checkName']")/$(alert_of "$order" "['lastError']")/$(stb GET "$alr/retrieve?checkId=$order" | python3 -c "import sys; t=sys.stdin.read(); print('LAP-14' in t)")"
+evaluate > /dev/null
+check_equal 'more evaluations open nothing more for the order' 1 "$(stb GET "$alr/retrieve?checkId=$order" | count)"
+check_equal 'the goods are received completely (201)' 201 "$(api_status "$(api POST "$po/$order/receipt/initiate" '{"lineNo":1,"deliveryRef":"DN-LATE","quantity":10}' "${staff[@]}")")"
+evaluate > /dev/null
+check_equal 'receiving everything resolves the alert' True "$(truth wait_for 20 status_is "$order" RESOLVED)"
+cancelled=$(placed_order PO-LATE-2)
+postpone "$cancelled"
+evaluate > /dev/null
+check_equal 'a second late order gets its alert' True "$(truth wait_for 20 linked "$cancelled")"
+check_equal 'it is cancelled (204)' 204 "$(st PUT "$po/$cancelled/control/cancel")"
+evaluate > /dev/null
+check_equal 'cancelling the order resolves the alert: nothing is owed' True "$(truth wait_for 20 status_is "$cancelled" RESOLVED)"
 
 echo "Promises alerting smoke: $checks checks, $failed failed"
 [[ $failed -eq 0 ]]

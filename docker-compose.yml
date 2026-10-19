@@ -373,6 +373,7 @@ services:
       LICENSE_REGISTRY_SERVICE_URL: http://it-license-registry:8080
       DR_REGISTRY_SERVICE_URL: http://it-dr-registry:8080
       CLOUD_INVENTORY_SERVICE_URL: http://it-cloud-inventory:8080
+      PROCUREMENT_SERVICE_URL: http://it-procurement:8080
       # Webhook notices (alerting ADR-036): the rules name these variables, never the address. They point at the test double (profile health-test),
       # which is reachable over plain http only because its host is listed here; a real deployment sets https addresses and leaves the list empty.
       THINKLAB_ALERT_HOOK_OPS: http://mock-target:9200/hook/ops
