@@ -479,6 +479,20 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_cloud_inventory_db?replicaSet=thinklab-rs0
 
+  # Procurement (Journey 15, sixth service): purchase orders for a vendor, approved through the shared approval service and received in part or in whole by
+  # people; what arrived and whether it is late are judged when read. THINKLAB_PO_POLICY_ID has no default (the approval policy is provisioned after the
+  # approval service is up, like the CAB/ECAB policies; without it, sending an order for approval answers 502). Staff only.
+  it-procurement:
+    <<: *service
+    build: ../micronaut-it-procurement-service
+    image: thinklab/it-procurement:local
+    ports: ["8114:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_it_procurement_db?replicaSet=thinklab-rs0
+      WORKFLOW_APPROVAL_SERVICE_URL: http://workflow-approval:8080
+      THINKLAB_PO_POLICY_ID: ${THINKLAB_PO_POLICY_ID:-}
+
   # TEST DOUBLE, never part of a real deployment (profile health-test): something for the health monitor to watch, whose answer the smoke controls.
   mock-target:
     profiles: ["health-test"]
@@ -560,6 +574,7 @@ services:
       GATEWAY_IT_CLOUD_COST_URL: http://it-cloud-cost:8080
       GATEWAY_IT_DR_REGISTRY_URL: http://it-dr-registry:8080
       GATEWAY_IT_CLOUD_INVENTORY_URL: http://it-cloud-inventory:8080
+      GATEWAY_IT_PROCUREMENT_URL: http://it-procurement:8080
       # Plain-http compose stack: the refresh cookie cannot be Secure here (set true behind https). Path is as the browser sees it.
       GATEWAY_SESSION_COOKIE_SECURE: "false"
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080

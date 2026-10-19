@@ -162,6 +162,22 @@ foreach ($s in $Services) {
         } | ConvertTo-Json | Set-Content "$RunDir\change-management-policies.json"
         Write-Host "  CAB policy [$($cabPolicy.id)] ECAB policy [$($ecabPolicy.id)]"
     }
+    # it-procurement needs the id of its purchase-order ApprovalPolicy at JVM startup (thinklab.procurement.approval-policy-id, ADR-032 of that service), like GMUD.
+    # One approval of two eligible approvers; written to the run directory for procurement-smoke.ps1.
+    if ($s.Name -eq 'micronaut-it-procurement-service') {
+        if (-not (Wait-Http 'http://localhost:8090/health/readiness' 120)) {
+            throw 'workflow-approval-service did not become ready in time; cannot provision the purchase-order policy for procurement.'
+        }
+        Write-Host 'Provisioning the purchase-order ApprovalPolicy on workflow-approval-service...'
+        $poTenant = [guid]::NewGuid().ToString()
+        $poApprovers = @([guid]::NewGuid().ToString(), [guid]::NewGuid().ToString())
+        $poPolicy = Invoke-RestMethod -Method Post -Uri 'http://localhost:8090/workflow-approval/v1/policy/initiate' `
+            -Headers @{ 'X-Tenant-Id' = $poTenant } -ContentType 'application/json' `
+            -Body (@{ name = 'PURCHASE-ORDER'; requiredApprovals = 1; eligibleApproverIds = $poApprovers } | ConvertTo-Json)
+        $env:THINKLAB_PO_POLICY_ID = $poPolicy.id
+        [pscustomobject]@{ tenantId = $poTenant; policyId = $poPolicy.id; approverIds = $poApprovers } | ConvertTo-Json | Set-Content "$RunDir\procurement-policy.json"
+        Write-Host "  purchase-order policy [$($poPolicy.id)]"
+    }
     Write-Host "Starting $($s.Name) on :$($s.Port)..."
     $p = Start-Process $java -ArgumentList '-cp', "`"$lib`"", 'com.thinklab.Application' `
         -RedirectStandardOutput "$RunDir\$($s.Name).log" -RedirectStandardError "$RunDir\$($s.Name).err" -WindowStyle Hidden -PassThru

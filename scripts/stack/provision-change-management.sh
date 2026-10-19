@@ -7,6 +7,9 @@
 # `docker compose up -d it-change-management` again to recreate just that one container with the real
 # ids (compose detects the changed environment and restarts it - nothing else is touched).
 #
+# It also provisions the purchase-order policy of it-procurement (one approval, two eligible approvers) and writes .e2e/procurement-policy.json for procurement-smoke.sh
+# (the same tenant: an approval policy belongs to a tenant), printing THINKLAB_PO_POLICY_ID too.
+#
 # Writes thinklab-platform/.e2e/change-management-policies.json (same schema start-local-stack.ps1's own
 # provisioning step writes, so change-management-smoke.sh can read it the same way its PowerShell
 # counterpart does) and prints THINKLAB_CAB_POLICY_ID=... / THINKLAB_ECAB_POLICY_ID=... lines, meant to
@@ -34,10 +37,15 @@ create_policy() {
     -d "{\"name\":\"$name\",\"requiredApprovals\":$required,\"eligibleApproverIds\":$ids_json}"
 }
 
+po_approvers=("$(uuid)" "$(uuid)")
+
 cab_response=$(create_policy CAB 2 "${cab_approvers[@]}")
 ecab_response=$(create_policy ECAB 1 "${ecab_approvers[@]}")
 cab_id=$(echo "$cab_response" | json "['id']")
 ecab_id=$(echo "$ecab_response" | json "['id']")
+# The approval policy of the procurement service (purchase orders): one approval of two eligible approvers, on the same tenant (policies belong to a tenant).
+po_response=$(create_policy PURCHASE-ORDER 1 "${po_approvers[@]}")
+po_id=$(echo "$po_response" | json "['id']")
 
 python3 -c "
 import json, sys
@@ -48,6 +56,12 @@ json.dump({
 " "$cab_id" "$(IFS=,; echo "${cab_approvers[*]}")" "$ecab_id" "$(IFS=,; echo "${ecab_approvers[*]}")" \
   "$out_dir/change-management-policies.json"
 
-echo "CAB policy [$cab_id] ECAB policy [$ecab_id]" >&2
+python3 -c "
+import json, sys
+json.dump({'tenantId': sys.argv[1], 'policyId': sys.argv[2], 'approverIds': sys.argv[3].split(',')}, open(sys.argv[4], 'w'))
+" "$tenant" "$po_id" "$(IFS=,; echo "${po_approvers[*]}")" "$out_dir/procurement-policy.json"
+
+echo "CAB policy [$cab_id] ECAB policy [$ecab_id] purchase-order policy [$po_id]" >&2
 echo "THINKLAB_CAB_POLICY_ID=$cab_id"
 echo "THINKLAB_ECAB_POLICY_ID=$ecab_id"
+echo "THINKLAB_PO_POLICY_ID=$po_id"
