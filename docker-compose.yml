@@ -364,11 +364,12 @@ services:
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_alerting_db?replicaSet=thinklab-rs0
       HEALTH_MONITORING_SERVICE_URL: http://it-health-monitoring:8080
       INCIDENT_SERVICE_URL: http://it-incident-management:8080
-      # Rules can watch the backup, patch, capacity and vendor registries (alerting ADR-037, ADR-038); they are read at evaluation time, only while a rule watches them.
+      # Rules can watch the backup, patch, capacity, vendor and licence registries (alerting ADR-037..039); they are read at evaluation time, only while a rule watches them.
       BACKUP_REGISTRY_SERVICE_URL: http://it-backup-registry:8080
       PATCH_REGISTRY_SERVICE_URL: http://it-patch-registry:8080
       CAPACITY_REGISTRY_SERVICE_URL: http://it-capacity-registry:8080
       VENDOR_REGISTRY_SERVICE_URL: http://it-vendor-registry:8080
+      LICENSE_REGISTRY_SERVICE_URL: http://it-license-registry:8080
       # Webhook notices (alerting ADR-036): the rules name these variables, never the address. They point at the test double (profile health-test),
       # which is reachable over plain http only because its host is listed here; a real deployment sets https addresses and leaves the list empty.
       THINKLAB_ALERT_HOOK_OPS: http://mock-target:9200/hook/ops
