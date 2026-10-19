@@ -442,6 +442,18 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_ipam_db?replicaSet=thinklab-rs0
 
+  # Journey 15, fourth service: cloud costs. A provider account in one currency with a monthly budget, and what each day cost as a billing tool
+  # reports it; each account judged when read over the current month (spent, a straight line to the month end, near or over budget). It calls no
+  # other service. Staff only.
+  it-cloud-cost:
+    <<: *service
+    build: ../micronaut-it-cloud-cost-service
+    image: thinklab/it-cloud-cost:local
+    ports: ["8111:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_it_cloud_cost_db?replicaSet=thinklab-rs0
+
   # TEST DOUBLE, never part of a real deployment (profile health-test): something for the health monitor to watch, whose answer the smoke controls.
   mock-target:
     profiles: ["health-test"]
@@ -518,6 +530,7 @@ services:
       GATEWAY_IT_VENDOR_REGISTRY_URL: http://it-vendor-registry:8080
       GATEWAY_IT_LICENSE_REGISTRY_URL: http://it-license-registry:8080
       GATEWAY_IT_IPAM_URL: http://it-ipam:8080
+      GATEWAY_IT_CLOUD_COST_URL: http://it-cloud-cost:8080
       # Plain-http compose stack: the refresh cookie cannot be Secure here (set true behind https). Path is as the browser sees it.
       GATEWAY_SESSION_COOKIE_SECURE: "false"
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080

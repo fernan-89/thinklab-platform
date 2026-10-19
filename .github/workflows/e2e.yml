@@ -160,6 +160,9 @@ jobs:
       - name: IPAM smoke (subnets judged when read, twenty overlapping subnets at once leave one, an address held once under twenty requests, twenty next-free requests get twenty addresses, release and reuse, a retired subnet cannot come back over a taken range, staff only, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/ipam-smoke.sh
 
+      - name: Cloud cost smoke (an account in one currency judged when read over the month with a straight line to its end, twenty reports of one day and amount make one report, a correction counts and going back to an earlier amount counts again, last month stays out, a day at most one ahead, nothing a tool says is repeated, two people pausing at once, staff only, recorded on the ledger)
+        run: thinklab-platform/scripts/e2e/cloud-cost-smoke.sh
+
       - name: Promises alerting smoke (a rule watches the patch, capacity or backup registry, a broken promise opens one alert and one incident with a fixed code, a backup that never ran opens nothing, a promise kept again resolves the alert, staff only)
         run: thinklab-platform/scripts/e2e/promises-alerting-smoke.sh
 
