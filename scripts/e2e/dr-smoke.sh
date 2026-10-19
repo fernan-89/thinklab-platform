@@ -15,6 +15,9 @@ json() { python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
 uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
 count() { python3 -c "import json,sys; print(len(json.load(sys.stdin)))"; }
 # ago MINUTES -> an instant that many minutes in the past
+# Two moments from ONE reading of the clock: "START FINISH", that many minutes ago. A duration asserted to the minute must never depend on two readings
+# (a loaded runner can take a second between them, and a duration is rounded up to whole minutes).
+span() { python3 -c "import datetime,sys; n=datetime.datetime.now(datetime.timezone.utc); f=lambda m: (n - datetime.timedelta(minutes=float(m))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z'; print(f(sys.argv[1]), f(sys.argv[2]))" "$1" "$2"; }
 ago() { python3 -c "import datetime,sys; print((datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(minutes=float(sys.argv[1]))).strftime('%Y-%m-%dT%H:%M:%S.%f')[:-3] + 'Z')" "$1"; }
 
 # api METHOD URL BODY HEADER... -> prints "<status>\n<body>", never exits on a non-2xx.
@@ -83,7 +86,7 @@ check_equal 'an unknown strategy is a 400' 400 "$(st POST "$dr/initiate" '{"name
 check_equal 'an exercise interval of zero days is a 400' 400 "$(st POST "$dr/initiate" "$(plan_json 'Zero' WARM_STANDBY 120 30 0 '')")"
 
 # 3. A pass inside the objectives: READY.
-start1=$(ago 300); end1=$(ago 240)
+read -r start1 end1 < <(span 300 240)
 first=$(report "$(exercise_json "$plan" FAILOVER SUCCEEDED "$start1" "$end1" 10 '')")
 check_equal 'a passed exercise is stored (201) and its recovery took 60 minutes' '201/60' "$(api_status "$first")/$(api_body "$first" | json "['durationMinutes']")"
 check_equal 'the plan is READY, the recovery time and point met' 'READY/True/True' "$(judged "$plan")"
