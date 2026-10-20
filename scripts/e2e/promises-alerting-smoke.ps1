@@ -16,13 +16,16 @@
     (7) a licence over its limit opens one alert and one incident (ADR-039), and freed seats resolve it;
     (8) a recovery plan whose exercise failed opens one alert and one incident (ADR-041), and a later pass resolves it;
     (9) a cloud resource the tool has not seen for days opens one alert and one incident (ADR-042), seeing it again resolves it, and a terminated one opens nothing
-        (the smoke moves the moment the tool last saw the resource back in the store with docker exec on the MongoDB container, MONGO_CONTAINER, the way two days passing would).
+        (the smoke moves the moment the tool last saw the resource back in the store with docker exec on the MongoDB container, MONGO_CONTAINER, the way two days passing would);
+    (10) a placed purchase order past its expected day opens one alert and one incident (ADR-043), receiving it completely or cancelling it resolves the alert (the smoke moves
+        the expected day back in the store, and approves the order on the REAL approval service with the policy in .e2e/procurement-policy.json).
 
     pwsh -File .\promises-alerting-smoke.ps1
 #>
 param(
     [string]$GatewayUrl = 'http://localhost:8088',
-    [string]$MongoContainer = 'thinklab-mongo-1'
+    [string]$MongoContainer = 'thinklab-mongo-1',
+    [string]$PolicyFile = (Join-Path $PSScriptRoot '..\..\.e2e\procurement-policy.json')
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,7 +56,7 @@ function Assert-Equal {
 function Ahead([double]$Minutes) { (Get-Date).ToUniversalTime().AddMinutes($Minutes).ToString("yyyy-MM-dd'T'HH:mm:ss'Z'") }
 
 $alr = "$GatewayUrl/it-alerting/v1"; $pch = "$GatewayUrl/it-patch-registry/v1"; $cap = "$GatewayUrl/it-capacity-registry/v1"
-$bkp = "$GatewayUrl/it-backup-registry/v1"; $vnd = "$GatewayUrl/it-vendor-registry/v1"; $lic = "$GatewayUrl/it-license-registry/v1"; $dr = "$GatewayUrl/it-dr-registry/v1"; $invReg = "$GatewayUrl/it-cloud-inventory/v1"; $inc = "$GatewayUrl/it-incident-management/v1"
+$bkp = "$GatewayUrl/it-backup-registry/v1"; $vnd = "$GatewayUrl/it-vendor-registry/v1"; $lic = "$GatewayUrl/it-license-registry/v1"; $dr = "$GatewayUrl/it-dr-registry/v1"; $invReg = "$GatewayUrl/it-cloud-inventory/v1"; $po = "$GatewayUrl/it-procurement/v1"; $inc = "$GatewayUrl/it-incident-management/v1"
 $tenantId = [guid]::NewGuid().ToString()
 $user = [guid]::NewGuid().ToString(); $filedFor = [guid]::NewGuid().ToString()
 $patchAsset = [guid]::NewGuid().ToString(); $diskAsset = [guid]::NewGuid().ToString(); $backupAsset = [guid]::NewGuid().ToString()
@@ -197,6 +200,43 @@ Age $gone
 Assert-Equal 'a resource the tool said is terminated is GONE' (Invoke-Api GET "$invReg/$gone/retrieve" $staff).Body.presence 'GONE'
 [void](Evaluate)
 Assert-Equal 'a terminated resource opens nothing, however long ago it was seen' @((Invoke-Api GET "$alr/retrieve?checkId=$gone" $staff).Body).Count 0
+
+# 10. A purchase order that is late (ADR-043). An order cannot be drafted with an expected day in the past, so the smoke moves the expected day of a placed order
+# back in the store (docker exec, as for section 9); the approval goes through the REAL approval service with the purchase-order policy.
+if (-not (Test-Path $PolicyFile)) { throw "Missing $PolicyFile - run start-local-stack.ps1 (or provision-change-management.sh) first." }
+$approver = @((Get-Content $PolicyFile -Raw | ConvertFrom-Json).approverIds)[0]
+function Order-Body2([string]$Reference) { @{ reference = $Reference; vendorId = [guid]::NewGuid().ToString(); requesterId = $filedFor; currency = 'BRL'; expectedOn = (Get-Date).AddDays(5).ToString('yyyy-MM-dd'); lines = @(@{ category = 'HARDWARE'; item = 'LAP-14'; quantity = 10; unitPrice = 1500.00 }) } }
+function Placed-Order([string]$Reference) {
+    $id = (Invoke-Api POST "$po/initiate" $staff (Order-Body2 $Reference)).Body.id
+    [void](Invoke-Api PUT "$po/$id/control/submit" $staff)
+    [void](Invoke-Api PUT "$po/$id/approval/capture" $staff @{ approverId = $approver; outcome = 'APPROVE' })
+    [void](Invoke-Api PUT "$po/$id/control/place" $staff)
+    $id
+}
+function Postpone([string]$Id) { $day = (Get-Date).AddDays(-3).ToString('yyyy-MM-dd'); docker exec $MongoContainer mongosh --quiet --eval "db.getSiblingDB('thinklab_it_procurement_db').purchase_orders.updateOne({_id: UUID('$Id')}, {`$set: {expectedOn: '$day'}})" | Out-Null }
+$order = Placed-Order 'PO-LATE-1'
+Assert-Equal 'a placed order is not late while its expected day is ahead' "$((Invoke-Api GET "$po/$order/retrieve" $staff).Body.status)/$((Invoke-Api GET "$po/$order/retrieve" $staff).Body.late)" 'ORDERED/False'
+Assert-Equal 'a rule for the procurement registry is set (201)' (Invoke-Api POST "$alr/rule/initiate" $staff (Rule-Body 'Purchase orders' 'PROCUREMENT')).Status 201
+[void](Evaluate)
+Assert-Equal 'an order that is not late opens nothing' @((Invoke-Api GET "$alr/retrieve?checkId=$order" $staff).Body).Count 0
+Postpone $order
+Assert-Equal 'three days past the expected day: the registry says it is late' (Invoke-Api GET "$po/$order/retrieve" $staff).Body.late $true
+[void](Evaluate)
+Assert-Equal 'the order gets one alert and one incident' (Wait-For 20 { Linked $order }) $true
+$orderAlert = AlertOf $order
+Assert-Equal 'the alert names the order and the fixed code PURCHASE_ORDER_LATE, and carries no vendor or item' "$($orderAlert.checkName)/$($orderAlert.lastError)/$((($orderAlert | ConvertTo-Json -Depth 6) -like '*LAP-14*'))" 'PO-LATE-1/PURCHASE_ORDER_LATE/False'
+[void](Evaluate)
+Assert-Equal 'more evaluations open nothing more for the order' @((Invoke-Api GET "$alr/retrieve?checkId=$order" $staff).Body).Count 1
+Assert-Equal 'the goods are received completely (201)' (Invoke-Api POST "$po/$order/receipt/initiate" $staff @{ lineNo = 1; deliveryRef = 'DN-LATE'; quantity = 10 }).Status 201
+[void](Evaluate)
+Assert-Equal 'receiving everything resolves the alert' (Wait-For 20 { Status-Is $order 'RESOLVED' }) $true
+$cancelled = Placed-Order 'PO-LATE-2'
+Postpone $cancelled
+[void](Evaluate)
+Assert-Equal 'a second late order gets its alert' (Wait-For 20 { Linked $cancelled }) $true
+Assert-Equal 'it is cancelled (204)' (Invoke-Api PUT "$po/$cancelled/control/cancel" $staff).Status 204
+[void](Evaluate)
+Assert-Equal 'cancelling the order resolves the alert: nothing is owed' (Wait-For 20 { Status-Is $cancelled 'RESOLVED' }) $true
 
 $results | Format-Table -AutoSize | Out-String | Write-Output
 $failed = @($results | Where-Object { $_.Result -eq 'FAIL' }).Count

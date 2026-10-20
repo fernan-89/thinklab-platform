@@ -3,7 +3,7 @@
   Live proof of the starter pack of alert rules (scripts/stack/seed-starter-pack.ps1) through the platform gateway (PowerShell port of starter-pack-smoke.sh).
 
 .DESCRIPTION
-  An edition gets its rules (Homelab 2, Team 5, Enterprise 8), each watching every policy of its source and taking the class of that source; running it
+  An edition gets its rules (Homelab 2, Team 5, Enterprise 9), each watching every policy of its source and taking the class of that source; running it
   again creates nothing; moving up an edition adds only what is missing; a rule a person paused stays paused; another tenant has none of it; an unknown
   edition or a missing argument is refused (the PowerShell script refuses them when it binds its parameters, so the exit code is 1, not the 2 of the bash one).
 
@@ -74,8 +74,8 @@ Assert-Equal 'still five rules' (Rules).Count 5
 
 # 4. Enterprise.
 $run = Pack 'ENTERPRISE'
-Assert-Equal 'Enterprise adds the vendor, licence and cloud resource rules' "$($run.Code)/$($run.Last)" '0/ENTERPRISE: 3 created, 5 already there, 0 failed'
-Assert-Equal 'eight rules, all eight sources' (Sources) 'BACKUP,CAPACITY,CLOUD_INVENTORY,DR,HEALTH_CHECK,LICENSE,PATCH,VENDOR'
+Assert-Equal 'Enterprise adds the vendor, licence, cloud resource and purchase order rules' "$($run.Code)/$($run.Last)" '0/ENTERPRISE: 4 created, 5 already there, 0 failed'
+Assert-Equal 'nine rules, all nine sources' (Sources) 'BACKUP,CAPACITY,CLOUD_INVENTORY,DR,HEALTH_CHECK,LICENSE,PATCH,PROCUREMENT,VENDOR'
 Assert-Equal 'the contract rules are CONTRACT' ((@(Rules | Where-Object { $_.source -in 'VENDOR', 'LICENSE' } | ForEach-Object { $_.alertClass })) -join ',') 'CONTRACT,CONTRACT'
 Assert-Equal 'the cloud resource rule is AVAILABILITY' ((@(Rules | Where-Object { $_.source -eq 'CLOUD_INVENTORY' } | ForEach-Object { $_.alertClass })) -join ',') 'AVAILABILITY'
 

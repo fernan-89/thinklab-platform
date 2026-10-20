@@ -36,6 +36,7 @@ enterprise=(
   "Starter: a vendor agreement is about to end|VENDOR|MEDIUM|LOW|0"
   "Starter: a licence is over its limit|LICENSE|MEDIUM|MEDIUM|0"
   "Starter: a cloud resource went missing|CLOUD_INVENTORY|MEDIUM|MEDIUM|0"
+  "Starter: a purchase order is late|PROCUREMENT|MEDIUM|LOW|0"
 )
 case "$edition" in
   HOMELAB) pack=("${homelab[@]}") ;;
