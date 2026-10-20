@@ -210,6 +210,7 @@ hook_body() { hooks | python3 -c "import json,sys; print(json.dumps([h['body'] f
 eval_field() { evaluate | json "['$1']"; }
 cache_field() { alerts "?checkId=$cache" | json "[0]$1"; }
 cache_resolved() { [[ "$(cache_field "['status']")" == RESOLVED ]]; }
+cache_reopened_twice() { [[ "$(cache_field "['status']")/$(cache_field "['reopenCount']")" == OPEN/2 ]]; }
 cache_notice() { alerts "?checkId=$cache" | python3 -c "import json,sys; n={x['notice']: x for x in json.load(sys.stdin)[0]['notices']}.get('$1', {}); print($2)"; }
 notice_failed() { [[ "$(cache_notice REOPENED_1 "n.get('attempts', 0) >= 1 and not n.get('sentAt') and 'HTTP 500' in (n.get('lastError') or '')")" == True ]]; }
 retry_reopened_notice() { evaluate > /dev/null; has_hook "$cache_alert" ops:REOPENED; }
@@ -301,7 +302,10 @@ check_equal 'a window that already ended is refused (400)' 400 "$(st POST "$alr/
 check_equal 'another tenant cannot see the window (404)' 404 "$(api_status "$(api GET "$alr/window/$window_id/retrieve" "" "${other_tenant[@]}")")"
 check_equal 'cancelling it ends the silence at once (204)' 204 "$(st PUT "$alr/window/$window_id/control/cancel")"
 check_equal 'cancelling it twice is an illegal transition (409)' 409 "$(st PUT "$alr/window/$window_id/control/cancel")"
-check_equal 'the very next evaluation reopens the alert' 1 "$(eval_field reopened)"
+# The scheduler also evaluates every few seconds, so after the window is cancelled either it or this evaluation reopens the alert: what is proved is that it is
+# reopened once the silence is over, and (next check) that it is reopened exactly once more, not that this call was the one that did it.
+evaluate > /dev/null
+check_equal 'once the silence is over the next evaluation reopens the alert' True "$(truth wait_for 20 cache_reopened_twice)"
 check_equal 'it is OPEN again, reopened twice, and the notice for that cycle is sent' 'OPEN/2/True' "$(cache_field "['status']")/$(cache_field "['reopenCount']")/$(truth wait_for 20 has_hook "$cache_alert" ops:REOPENED 2)"
 check_equal 'the window trail reads in order' 'INITIATED,CANCELLED' "$(trail "$alr/window/$window_id")"
 check_equal 'there is no delete of a window (404 or 405)' True "$(delete_window=$(st DELETE "$alr/window/$window_id"); [[ "$delete_window" == 404 || "$delete_window" == 405 ]] && echo True || echo False)"

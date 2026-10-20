@@ -315,7 +315,10 @@ try {
     Assert-Equal 'another tenant cannot see the window (404)' (Invoke-Api GET "$alr/window/$windowId/retrieve" $otherTenant).Status 404
     Assert-Equal 'cancelling it ends the silence at once (204)' (Invoke-Api PUT "$alr/window/$windowId/control/cancel" $staff).Status 204
     Assert-Equal 'cancelling it twice is an illegal transition (409)' (Invoke-Api PUT "$alr/window/$windowId/control/cancel" $staff).Status 409
-    Assert-Equal 'the very next evaluation reopens the alert' "$((Evaluate).Body.reopened)" 1
+    # The scheduler also evaluates every few seconds, so after the window is cancelled either it or this evaluation reopens the alert: what is proved is that it is
+    # reopened once the silence is over, and (next check) that it is reopened exactly once more, not that this call was the one that did it.
+    [void](Evaluate)
+    Assert-Equal 'once the silence is over the next evaluation reopens the alert' (Wait-Until { $a = Cache-Alert; "$($a.status)/$($a.reopenCount)" -eq 'OPEN/2' } 20) $true
     Assert-Equal 'it is OPEN again, reopened twice, and the notice for that cycle is sent' "$((Cache-Alert).status)/$((Cache-Alert).reopenCount)/$(Wait-Until { (Hook-Count $cacheAlert 'ops:REOPENED') -ge 2 } 20)" 'OPEN/2/True'
     Assert-Equal 'the window trail reads in order' (Actions "$alr/window/$windowId") 'INITIATED,CANCELLED'
     Assert-Equal 'there is no delete of a window (404 or 405)' (@(404, 405) -contains (Invoke-Api DELETE "$alr/window/$windowId" $staff).Status) $true
