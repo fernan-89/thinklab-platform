@@ -172,6 +172,9 @@ jobs:
       - name: Procurement smoke (a purchase order approved by the shared approval service, an approver who is not eligible refused, a rejection is final, placed and received in part, the same receipt twenty times at once is one, twenty receipts of one unit against five to arrive leave exactly five, never more than was ordered, a placed order with goods received cannot be cancelled, fixed lists and identifiers with nothing a tool says repeated, staff only, recorded on the ledger)
         run: thinklab-platform/scripts/e2e/procurement-smoke.sh
 
+      - name: Promises contract smoke (every registry answers GET promises/retrieve with the same shape: a verdict of the fixed three, a code only when broken, a status and an instant; a window or a limit out of range is refused, a REQUESTER is refused, another tenant sees nothing)
+        run: thinklab-platform/scripts/e2e/promises-contract-smoke.sh
+
       - name: Promises alerting smoke (a rule watches the patch, capacity or backup registry, a broken promise opens one alert and one incident with a fixed code, a backup that never ran opens nothing, a promise kept again resolves the alert, staff only)
         run: thinklab-platform/scripts/e2e/promises-alerting-smoke.sh
 
