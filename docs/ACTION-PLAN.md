@@ -14,7 +14,7 @@ Base: reavaliação do que foi feito, do que falta e das duas inspirações do p
 |---|---|---|---|---|
 | 0.1 | Mergear o platform #29 (smoke de alerting sem corrida) | Você | P | e2e da master verde |
 | 0.2 | Abrir Recovery, Cloud inventory e Procurement num navegador real, com a stack no ar, e anotar o que estranhar | Você | P | lista de ajustes enviada |
-| 0.3 | Rodar os `.ps1` num Windows real (smokes e `start-local-stack.ps1`) | Você | M | resultado por script |
+| 0.3 | ~~Rodar os `.ps1` num Windows real~~ — **dispensado** (smokes só em bash, ver 1.4). O `start-local-stack.ps1` continua sendo o único script de subida local sem Docker | — | — | — |
 | 0.4 | Remedir a memória das edições (Enterprise tem 38 serviços agora) | Eu | P | tabela do README atualizada |
 | 0.5 | **Auditoria de corridas:** procurar nos adaptadores ordenação por relógio tirado antes da escrita, "olhar e depois escrever" sem apoio do banco e leituras limitadas a "os mais novos" usadas para achar "os mais antigos" | Eu | M | achados listados; cada um corrigido com teste que falha no código antigo |
 | 0.6 | **e2e determinístico:** listar os smokes que dependem de tempo (`sleep`, agendadores, relógio) e trocá-los por "avaliar e esperar o estado"; meta de 5 execuções seguidas verdes na master | Eu | M | 5 verdes seguidas |
@@ -37,7 +37,7 @@ Base: reavaliação do que foi feito, do que falta e das duas inspirações do p
 **1.3 Tela genérica de promessas e de registro no web** (usa o contrato de 1.1)
 - Uma tela de "o que está quebrado" para todos os registros, e telas de registro guiadas por configuração onde são só lista e detalhe. Tam.: M.
 
-**1.4 Uma linguagem de smoke** — *Decisão.* O `pwsh` 7 roda em Linux e em Windows; manter um só conjunto reduz à metade a manutenção e remove o risco de o PowerShell nunca ter sido verificado. Conversão: G, mecânica, depois de 0.3.
+**1.4 Uma linguagem de smoke: bash** — *decidido (2026-10-20).* Os smokes novos passam a existir **só em bash**; os `.ps1` existentes ficam como estão (sem manutenção nova) e saem do CI e do repositório quando você quiser, em um PR à parte. Isso reduz à metade o custo de cada item novo. O passe no Windows (0.3) deixa de ser pré-requisito.
 
 ## Fase 2 — Lições das inspirações ainda não construídas
 
@@ -85,8 +85,8 @@ Segurança ligada por padrão; implantação em Kubernetes (Helm); observabilida
 
 ## Decisões que preciso de você
 
-1. Aprovar a Fase 1 (contrato de promessas e extração para o kit) antes de qualquer serviço novo.
-2. Linguagem única de smoke (1.4): PowerShell 7 ou bash.
+1. ~~Aprovar a Fase 1~~ — **o contrato de promessas foi aprovado (2026-10-20)**; a extração para o kit (1.2) segue pendente de aprovação própria.
+2. ~~Linguagem única de smoke~~ — decidido: bash.
 3. Qual da Fase 3 vem primeiro, e as perguntas de desenho de cada uma quando chegar a vez.
 4. Se a auditoria de corridas (0.5) achar algo grave, corrigir antes de seguir? (a minha recomendação é sim).
 
@@ -94,4 +94,4 @@ Segurança ligada por padrão; implantação em Kubernetes (Helm); observabilida
 
 - **Migração do contrato de promessas** mexe em 9 serviços: por isso estrangulada, um por PR, com o smoke de promessas como rede de segurança.
 - **Extração para o kit** acopla todos os serviços a uma versão do kit: manter versionamento e migrar um por vez.
-- **Conversão dos smokes** pode esconder diferenças de comportamento entre bash e PowerShell: converter só depois do passe no Windows (0.3).
+- **Os `.ps1` existentes** deixam de ser mantidos: se uma mudança de contrato os quebrar, só o bash é corrigido.
