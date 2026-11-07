@@ -73,3 +73,29 @@ jobs:
                         scripts/e2e/starter-pack-smoke.sh scripts/e2e/netdata-connector-smoke.sh scripts/e2e/dr-smoke.sh; do
             bash -n "$script"
           done
+
+  # The scripts are meant for Windows too, where `powershell` is version 5.1 (no `-SkipHttpErrorCheck`, `??` or `?:`). The job above parses
+  # them with PowerShell 7 and cannot see that; this one uses the shell Windows ships with.
+  windows-powershell:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: The PowerShell scripts parse in Windows PowerShell 5.1 and need nothing from PowerShell 7
+        shell: powershell
+        run: |
+          "PowerShell $($PSVersionTable.PSVersion)"
+          $files = Get-ChildItem -Path scripts -Recurse -Filter *.ps1
+          $bad = 0
+          foreach ($file in $files) {
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile($file.FullName, [ref]$null, [ref]$errors) | Out-Null
+            if ($errors) { $bad++; Write-Output "$($file.FullName): $($errors[0].Message)" }
+          }
+          # Parameters that exist only in PowerShell 7 are allowed only behind a check that the command has them.
+          $only7 = 'SkipHttpErrorCheck', 'SkipCertificateCheck', 'AllowUnencryptedAuthentication', 'SkipHeaderValidation'
+          foreach ($name in $only7) {
+            $hits = $files | Select-String -Pattern "-$name" | Where-Object { $_.Line -notmatch "ContainsKey\('$name'\)" -and $_.Line.TrimStart() -notmatch '^#' }
+            foreach ($hit in $hits) { $bad++; Write-Output "$($hit.Path):$($hit.LineNumber): -$name needs PowerShell 7" }
+          }
+          Write-Output "$($files.Count) scripts, $bad problems"
+          if ($bad -gt 0) { exit 1 }

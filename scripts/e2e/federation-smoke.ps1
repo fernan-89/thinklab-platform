@@ -25,7 +25,7 @@ param(
     [string]$GatewayUrl = 'http://localhost:8088',
     [string]$IdpIssuer = 'http://localhost:9000',
     [string]$IdpUrl = '',
-    [string]$NodeExe = (Join-Path $PSScriptRoot '..\..\..\tools\node\node.exe')
+    [string]$NodeExe = $($portable = Join-Path $PSScriptRoot '..\..\..\tools\node\node.exe'; if (Test-Path -LiteralPath $portable) { $portable } else { (Get-Command node -ErrorAction SilentlyContinue).Source })
 )
 
 $ErrorActionPreference = 'Stop'

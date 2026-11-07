@@ -37,7 +37,7 @@ function Invoke-Api {
     if ($null -ne $Body) { $p.ContentType = 'application/json'; $p.Body = if ($Body -is [string]) { $Body } else { $Body | ConvertTo-Json -Depth 6 } }
     try {
         $r = Invoke-WebRequest @p
-        return [pscustomobject]@{ Status = [int]$r.StatusCode; Text = $r.Content; Body = if ($r.Content) { $r.Content | ConvertFrom-Json } else { $null } }
+        return [pscustomobject]@{ Status = [int]$r.StatusCode; Text = $r.Content; Body = if ($r.Content -match '^\s*\[\s*\]\s*$') { ,@() } elseif ($r.Content) { $r.Content | ConvertFrom-Json } else { $null } }  # 5.1 turns "[]" into $null, and @($null).Count is 1
     } catch {
         $resp = $_.Exception.Response
         $text = if ($_.ErrorDetails -and $_.ErrorDetails.Message) { $_.ErrorDetails.Message }

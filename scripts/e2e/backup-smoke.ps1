@@ -89,7 +89,7 @@ $jobs | Remove-Job
 $codes = @($answers | ForEach-Object { ($_ -split '/')[0] })
 Assert-Equal 'the same backup reported by twenty agents at once: one 201, nineteen 200, no other answer' "$(@($codes | Where-Object { $_ -eq '201' }).Count)/$(@($codes | Where-Object { $_ -eq '200' }).Count)/$(@($codes | Where-Object { $_ -ne '201' -and $_ -ne '200' }).Count)" '1/19/0'
 Assert-Equal 'every answer is the same run' @($answers | ForEach-Object { ($_ -split '/')[1] } | Sort-Object -Unique).Count 1
-Assert-Equal 'and the list holds exactly one run for the policy' (Runs).Count 1
+Assert-Equal 'and the list holds exactly one run for the policy' @(Runs).Count 1
 Assert-Equal 'the policy is OK, and the run lasted 20 minutes' "$((Get-Policy).protection)/$((Runs)[0].durationMinutes)" 'OK/20'
 
 # 3. The summary only moves forward.
@@ -102,7 +102,7 @@ $failedStart = Minutes-Ago 60; $failedFinish = Minutes-Ago 55
 $failedRun = Invoke-Api POST "$bkp/run/initiate" $tool (Run-Body 'BACKUP' 'FAILED' $failedStart $failedFinish @{ failureReason = 'STORAGE_FULL' })
 Assert-Equal 'a failed backup names one reason from the list (201)' "$($failedRun.Status)/$($failedRun.Body.failureReason)" '201/STORAGE_FULL'
 Assert-Equal 'it moves the last run, not the last success' "$(Stamp (Get-Policy).lastRunAt)/$(Stamp (Get-Policy).lastSuccessAt)" "$failedFinish/$newerFinish"
-Assert-Equal 'the runs are listed newest start first, and limited' "$((Runs)[0].outcome)/$((Runs '&limit=1').Count)" 'FAILED/1'
+Assert-Equal 'the runs are listed newest start first, and limited' "$((Runs)[0].outcome)/$(@(Runs '&limit=1').Count)" 'FAILED/1'
 
 # 4. A failure reason is never what the tool said.
 $secret = 'password=hunter2'
