@@ -78,14 +78,14 @@ Assert-Equal 'the list finds it by level, by asset and by metric' "$(@((Invoke-A
 # 2. Samples a day apart draw a straight line: 10 units a day, 4 days to the limit.
 $day3 = Ago (3 * $Day); $day2 = Ago (2 * $Day); $day1 = Ago $Day
 $first = Report (Sample-Body $policy 40 $day3)
-Assert-Equal 'the first sample is a new fact: 201, value kept, reported by the tool' "$($first.Status)/$($first.Body.value)/$($first.Body.reportedBy)" '201/40/disk-agent-1'
+Assert-Equal 'the first sample is a new fact: 201, value kept, reported by the tool' "$($first.Status)/$([double]$first.Body.value)/$($first.Body.reportedBy)" '201/40/disk-agent-1'
 $one = Get-Policy
-Assert-Equal 'one sample says nothing about the trend: OK at 40 percent, not enough data' "$($one.level)/$($one.utilisationPercent)/$($one.forecast)" 'OK/40/NOT_ENOUGH_DATA'
+Assert-Equal 'one sample says nothing about the trend: OK at 40 percent, not enough data' "$($one.level)/$([double]$one.utilisationPercent)/$($one.forecast)" 'OK/40/NOT_ENOUGH_DATA'
 $again = Report (Sample-Body $policy 99 $day3)
-Assert-Equal 'the same moment with another value is the stored sample (200), the first value kept' "$($again.Status)/$($again.Body.id -eq $first.Body.id)/$($again.Body.value)" '200/True/40'
+Assert-Equal 'the same moment with another value is the stored sample (200), the first value kept' "$($again.Status)/$($again.Body.id -eq $first.Body.id)/$([double]$again.Body.value)" '200/True/40'
 Assert-Equal 'the second and third samples are new (201)' "$((Report (Sample-Body $policy 50 $day2)).Status)/$((Report (Sample-Body $policy 60 $day1)).Status)" '201/201'
 $line = Get-Policy
-Assert-Equal 'three samples a day apart: WITHIN_HORIZON, four days to the limit' "$($line.level)/$($line.forecast)/$([math]::Round($line.daysToLimit, 3))" 'OK/WITHIN_HORIZON/4'
+Assert-Equal 'three samples a day apart: WITHIN_HORIZON, four days to the limit' "$($line.level)/$($line.forecast)/$([math]::Round([double]$line.daysToLimit, 3))" 'OK/WITHIN_HORIZON/4'
 $gap = ([datetime]::Parse($line.projectedExhaustionAt).ToUniversalTime() - [datetime]::Parse($line.lastMeasuredAt).ToUniversalTime()).TotalSeconds
 Assert-Equal 'and it says when: four days after the latest sample' ([math]::Abs($gap - 4 * 86400) -lt 5) $true
 
@@ -112,15 +112,15 @@ $answers = @($jobs | Wait-Job | Receive-Job)
 $jobs | Remove-Job
 Assert-Equal 'three samples reported at once: all new (201)' (@($answers | ForEach-Object { ($_ -split '/')[0] }) -join '/') '201/201/201'
 $latest = Get-Policy
-Assert-Equal 'the latest is the one with the newest moment, whichever arrived last: 72, now WARNING' "$($latest.lastValue)/$($latest.level)" '72/WARNING'
+Assert-Equal 'the latest is the one with the newest moment, whichever arrived last: 72, now WARNING' "$([double]$latest.lastValue)/$($latest.level)" '72/WARNING'
 $late = Report (Sample-Body $policy 10 (Ago (5 * $Day)))
-Assert-Equal 'a late sample (five days ago) is new, joins the trend and does not move the latest back' "$($late.Status)/$((Get-Policy).lastValue)" '201/72'
-Assert-Equal 'the samples are listed newest first and limited' "$((@((Invoke-Api GET "$cap/sample/retrieve?policyId=$policy&limit=2" $staff).Body) | ForEach-Object { $_.value }) -join ',')/$(@((Invoke-Api GET "$cap/sample/retrieve?policyId=$policy" $staff).Body).Count)" '72,71/8'
+Assert-Equal 'a late sample (five days ago) is new, joins the trend and does not move the latest back' "$($late.Status)/$([double](Get-Policy).lastValue)" '201/72'
+Assert-Equal 'the samples are listed newest first and limited' "$((@((Invoke-Api GET "$cap/sample/retrieve?policyId=$policy&limit=2" $staff).Body) | ForEach-Object { [double]$_.value }) -join ',')/$(@((Invoke-Api GET "$cap/sample/retrieve?policyId=$policy" $staff).Body).Count)" '72,71/8'
 
 # 5. Tightening the limit changes the verdict at once, because nothing of it is stored.
 Assert-Equal 'update to a limit of 75 (204)' (Invoke-Api PUT "$cap/$policy/update" $staff (Policy-Body 'Orders disk' $assetId 75)).Status 204
 $tight = Get-Policy
-Assert-Equal '72 of 75 is now CRITICAL' "$($tight.level)/$($tight.utilisationPercent)" 'CRITICAL/96'
+Assert-Equal '72 of 75 is now CRITICAL' "$($tight.level)/$([double]$tight.utilisationPercent)" 'CRITICAL/96'
 Assert-Equal 'the list finds it by level CRITICAL and not by OK' "$(@((Invoke-Api GET "$cap/retrieve?level=CRITICAL" $staff).Body)[0].id)/$(@((Invoke-Api GET "$cap/retrieve?level=OK" $staff).Body).Count)" "$policy/0"
 Assert-Equal 'a critical level not above the warning one is refused (400)' (Invoke-Api PUT "$cap/$policy/update" $staff (Policy-Body 'x' $assetId 100 'DISK' 80 80)).Status 400
 

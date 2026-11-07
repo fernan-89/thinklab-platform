@@ -84,10 +84,10 @@ function Placed([string]$Reference, [string]$Lines) {
 # 1. A draft.
 $first = Invoke-Api POST "$po/initiate" $staff (Order-Body 'PO-1' $defaultLines "`"$(Day 30)`"")
 $order = $first.Body.id
-Assert-Equal 'a purchase order is drafted (201): DRAFT, a total of 15100.00 in BRL, two lines, NOT_ORDERED' "$($first.Status)/$($first.Body.status)/$($first.Body.total)/$($first.Body.currency)/$(@($first.Body.lines).Count)/$($first.Body.fulfilment)" '201/DRAFT/15100/BRL/2/NOT_ORDERED'
+Assert-Equal 'a purchase order is drafted (201): DRAFT, a total of 15100.00 in BRL, two lines, NOT_ORDERED' "$($first.Status)/$($first.Body.status)/$([double]$first.Body.total)/$($first.Body.currency)/$(@($first.Body.lines).Count)/$($first.Body.fulfilment)" '201/DRAFT/15100/BRL/2/NOT_ORDERED'
 Assert-Equal 'the same reference again is a conflict (409)' (Invoke-Api POST "$po/initiate" $staff (Order-Body 'PO-1')).Status 409
 $updated = Invoke-Api PUT "$po/$order/update" $staff "{`"vendorId`":`"$vendor`",`"expectedOn`":null,`"lines`":$(Line-Body 'PEN-BLUE' 20)}"
-Assert-Equal 'a draft is updated (204): the lines are replaced and the total follows' "$($updated.Status)/$(@((Get-Order $order).lines).Count)/$((Get-Order $order).total)" '204/1/30'
+Assert-Equal 'a draft is updated (204): the lines are replaced and the total follows' "$($updated.Status)/$(@((Get-Order $order).lines).Count)/$([double](Get-Order $order).total)" '204/1/30'
 Assert-Equal 'the list finds it by status and by vendor, and not by another status' "$(@((Invoke-Api GET "$po/retrieve?status=DRAFT&vendorId=$vendor" $staff).Body)[0].id)/$(Count "$po/retrieve?status=APPROVED")" "$order/0"
 
 # 2. Approval through the REAL approval service.
