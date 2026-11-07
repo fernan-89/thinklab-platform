@@ -35,9 +35,21 @@ $tlHeaders = @{ 'X-Tenant-Id' = $OrganisationId; 'X-Executor' = 'netdata-sync' }
 $script:reported = 0
 $script:failed = 0
 
+# Invoke-WebRequest that returns the answer for 4xx/5xx too, in PowerShell 7 and in the Windows PowerShell 5.1 that ships with Windows
+# (which has no -SkipHttpErrorCheck: it throws a WebException that carries the response).
+function Invoke-HttpAnswer([hashtable]$Params) {
+    if ((Get-Command Invoke-WebRequest).Parameters.ContainsKey('SkipHttpErrorCheck')) { return Invoke-WebRequest @Params -SkipHttpErrorCheck }
+    try { return Invoke-WebRequest @Params -UseBasicParsing }
+    catch [System.Net.WebException] {
+        $answer = $_.Exception.Response
+        if ($null -eq $answer) { throw }
+        $content = (New-Object System.IO.StreamReader($answer.GetResponseStream())).ReadToEnd()
+        return [pscustomobject]@{ StatusCode = [int]$answer.StatusCode; Content = $content }
+    }
+}
 function Report([string]$What, [string]$Url, [string]$Body) {
     try {
-        $r = Invoke-WebRequest -Method Post -Uri $Url -ContentType 'application/json' -Body $Body -Headers $tlHeaders -SkipHttpErrorCheck -TimeoutSec 15
+        $r = Invoke-HttpAnswer @{ Method = 'Post'; Uri = $Url; ContentType = 'application/json'; Body = $Body; Headers = $tlHeaders; TimeoutSec = 15 }
         $code = [int]$r.StatusCode
     } catch { $code = 0 }
     if ($code -eq 200 -or $code -eq 201) { $script:reported++; Write-Output ("ok      {0} ({1})" -f $What, $code) }
@@ -45,7 +57,7 @@ function Report([string]$What, [string]$Url, [string]$Body) {
 }
 
 function Read-Netdata([string]$Url) {
-    $r = Invoke-WebRequest -Method Get -Uri $Url -Headers $ndHeaders -SkipHttpErrorCheck -TimeoutSec 15
+    $r = Invoke-HttpAnswer @{ Method = 'Get'; Uri = $Url; Headers = $ndHeaders; TimeoutSec = 15 }
     if ([int]$r.StatusCode -ne 200) { throw "HTTP $([int]$r.StatusCode)" }
     $r.Content | ConvertFrom-Json
 }

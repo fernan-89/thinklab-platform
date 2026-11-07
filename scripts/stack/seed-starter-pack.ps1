@@ -38,12 +38,23 @@ $enterprise = @(
 )
 $pack = switch ($Edition) { 'HOMELAB' { $homelab } 'TEAM' { $team } 'ENTERPRISE' { $enterprise } }
 
+# Invoke-WebRequest that returns the answer for 4xx/5xx too, in PowerShell 7 and in the Windows PowerShell 5.1 that ships with Windows
+# (which has no -SkipHttpErrorCheck: it throws a WebException that carries the response).
+function Invoke-HttpAnswer([hashtable]$Params) {
+    if ((Get-Command Invoke-WebRequest).Parameters.ContainsKey('SkipHttpErrorCheck')) { return Invoke-WebRequest @Params -SkipHttpErrorCheck }
+    try { return Invoke-WebRequest @Params -UseBasicParsing }
+    catch [System.Net.WebException] {
+        $answer = $_.Exception.Response
+        if ($null -eq $answer) { throw }
+        $content = (New-Object System.IO.StreamReader($answer.GetResponseStream())).ReadToEnd()
+        return [pscustomobject]@{ StatusCode = [int]$answer.StatusCode; Content = $content }
+    }
+}
 $created = 0; $kept = 0; $failed = 0
 foreach ($entry in $pack) {
     $name, $source, $impact, $urgency, $reopen = $entry.Split('|')
     $body = @{ name = $name; source = $source; impact = $impact; urgency = $urgency; reopenWithinMinutes = [int]$reopen; requesterId = $RequesterId } | ConvertTo-Json
-    $response = Invoke-WebRequest -Method Post -Uri "$Gateway/it-alerting/v1/rule/initiate" -ContentType 'application/json' -Body $body -SkipHttpErrorCheck `
-        -Headers @{ 'X-Tenant-Id' = $OrganisationId; 'X-Executor' = 'starter-pack' }
+    $response = Invoke-HttpAnswer @{ Method = 'Post'; Uri = "$Gateway/it-alerting/v1/rule/initiate"; ContentType = 'application/json'; Body = $body; Headers = @{ 'X-Tenant-Id' = $OrganisationId; 'X-Executor' = 'starter-pack' } }
     switch ([int]$response.StatusCode) {
         201 { $created++; Write-Output "created  $name" }
         409 { $kept++; Write-Output "kept     $name" }

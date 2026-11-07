@@ -31,7 +31,7 @@ param(
     [string]$TargetHost = 'localhost',
     [int]$TargetHttpPort = 9200,
     [int]$TargetTcpPort = 9201,
-    [string]$NodeExe = (Join-Path $PSScriptRoot '..\..\..\tools\node\node.exe')
+    [string]$NodeExe = $($portable = Join-Path $PSScriptRoot '..\..\..\tools\node\node.exe'; if (Test-Path -LiteralPath $portable) { $portable } else { (Get-Command node -ErrorAction SilentlyContinue).Source })
 )
 
 $ErrorActionPreference = 'Stop'
