@@ -30,12 +30,15 @@ jobs:
     timeout-minutes: 40
     steps:
       - name: Kernel of this runner (MongoDB 8.0 does not start on 6.19 to 7.0.13)
+        timeout-minutes: 1
         run: uname -r
       # The scripts expect the service repositories as siblings of thinklab-platform. The list comes
       # from scripts/stack/services.sh, so wiring a new service into the stack needs no change here.
       - uses: actions/checkout@v7
+        timeout-minutes: 5
         with: { path: thinklab-platform }
       - name: Clone the service repositories (master)
+        timeout-minutes: 5
         run: |
           source thinklab-platform/scripts/stack/services.sh
           for entry in "${THINKLAB_SERVICES[@]}"; do
@@ -45,12 +48,15 @@ jobs:
           done
 
       - uses: actions/setup-java@v6
+        timeout-minutes: 5
         with:
           distribution: temurin
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v6
+        timeout-minutes: 5
 
       - name: Build every service (installDist)
+        timeout-minutes: 20
         env:
           GITHUB_ACTOR: ${{ github.actor }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -82,6 +88,7 @@ jobs:
           }
 
       - name: Wait until every service is ready
+        timeout-minutes: 6
         run: thinklab-platform/scripts/stack/wait-ready.sh 240
 
       # it-change-management (GMUD) needs a real CAB/ECAB ApprovalPolicy id at JVM startup
@@ -91,55 +98,72 @@ jobs:
       # against it and recreate just the it-change-management container with their ids: compose detects
       # the changed environment and restarts only that one service, nothing else is touched.
       - name: Provision CAB/ECAB policies for it-change-management and the purchase-order policy for it-procurement
+        timeout-minutes: 3
         run: thinklab-platform/scripts/stack/provision-change-management.sh >> "$GITHUB_ENV"
 
       - name: Restart it-change-management and it-procurement with their policy ids
+        timeout-minutes: 3
         working-directory: thinklab-platform
         run: docker compose up -d it-change-management it-procurement
 
       - name: Wait until they are ready again
+        timeout-minutes: 4
         run: thinklab-platform/scripts/stack/wait-ready.sh 120
 
       - name: Install newman
+        timeout-minutes: 5
         run: npm install -g newman
 
       - name: Postman suites
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/run-e2e.sh
 
       - name: Event backbone smoke (user.initiated -> welcome notification)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/events-smoke.sh
 
       - name: Hardware maintenance smoke (WorkOrder repair -> Asset MAINTENANCE -> DEPLOYED)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/hardware-maintenance-smoke.sh
 
       - name: Change management smoke (CAB/ECAB quorum, veto, scheduling collision)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/change-management-smoke.sh
 
       - name: Discovery + topology smoke (promotion -> Asset, schema 422, blast radius)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/discovery-topology-smoke.sh
 
       - name: Ledger smoke (gateway records every mutation, hash chain verifies)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/ledger-smoke.sh
 
       - name: Anchor store smoke (object-lock bucket, the anchor cannot be removed, a plain delete does not hide it)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/anchor-store-smoke.sh
 
       - name: Investigation smoke (pseudonym lookup for a known person, recorded before it is disclosed)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/investigation-smoke.sh
 
       - name: Incident smoke (derived priority, lifecycle and SLA, requester self-service, a race, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/incident-smoke.sh
 
       - name: Service request smoke (catalog, approval chain, requester self-service, a race, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/service-request-smoke.sh
 
       - name: Problem smoke (a problem that explains a real incident, the known error, staff only, a race, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/problem-smoke.sh
 
       - name: Knowledge base smoke (a linked article found by text, review by another person, versions, two audiences, a race, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/knowledge-base-smoke.sh
 
       - name: External ticketing smoke (a real incident linked to a Jira ticket, both directions, the echo ignored, the platform wins, no secret anywhere, a race, recorded on the ledger)
+        timeout-minutes: 15
         env:
           # The connector reaches the double by its compose name; the double reaches the webhook through the gateway.
           TICKETING_INTERNAL_URL: http://mock-ticketing:9100
@@ -147,75 +171,97 @@ jobs:
         run: thinklab-platform/scripts/e2e/external-ticketing-smoke.sh
 
       - name: Health monitoring smoke (scheduled probes, a blip is not an outage, recovery, refused and timed out targets, redirects not followed, a race, recorded on the ledger)
+        timeout-minutes: 15
         env:
           # The monitor reaches the double by its compose name; this script reaches it by the published ports.
           TARGET_INTERNAL_HOST: mock-target
         run: thinklab-platform/scripts/e2e/health-monitoring-smoke.sh
 
       - name: Alerting smoke (an alert and one real incident per outage, the oldest rule decides, four evaluations at once open one, recovery adds an internal note and closes nothing, paused rules, staff only, recorded on the ledger)
+        timeout-minutes: 15
         env:
           # The monitor reaches the double by its compose name; this script reaches it by the published ports.
           TARGET_INTERNAL_HOST: mock-target
         run: thinklab-platform/scripts/e2e/alerting-smoke.sh
 
       - name: Backup smoke (a policy judged when read, twenty reports of one run make one run, the summary only moves forward, no free text from a tool, two people pausing at once, staff only, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/backup-smoke.sh
 
       - name: Patch smoke (a policy judged when read, twenty reports of one patch make one finding, an applied patch is never reopened, waivers with fixed reasons that run out, no free text, two people waiving at once, staff only, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/patch-smoke.sh
 
       - name: Capacity smoke (a policy judged when read with a straight-line forecast, twenty reports of one sample make one sample, the latest sample only moves forward, a different value never overwrites a moment, a tool that went silent is stale, no free text, two people pausing at once, staff only, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/capacity-smoke.sh
 
       - name: Vendor smoke (a vendor is a name and a category, an agreement is judged when read as not started, in force, expiring or expired, twenty registrations of one reference make one agreement, a renewal is a new last day, an inactive vendor takes no new agreement, a date that cannot be read is refused and never repeated, staff only, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/vendor-smoke.sh
 
       - name: License smoke (a licence judged when read as OK, near its limit or over it, twenty reports of one count make one report, the latest count only moves forward, a tool that went silent is stale, nothing a tool says is kept or repeated, two people pausing at once, staff only, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/license-smoke.sh
 
       - name: IPAM smoke (subnets judged when read, twenty overlapping subnets at once leave one, an address held once under twenty requests, twenty next-free requests get twenty addresses, release and reuse, a retired subnet cannot come back over a taken range, staff only, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/ipam-smoke.sh
 
       - name: Cloud cost smoke (an account in one currency judged when read over the month with a straight line to its end, twenty reports of one day and amount make one report, a correction counts and going back to an earlier amount counts again, last month stays out, a day at most one ahead, nothing a tool says is repeated, two people pausing at once, staff only, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/cloud-cost-smoke.sh
 
       - name: DR smoke (a recovery plan judged when read as NEVER_TESTED, READY, OBJECTIVE_MISSED, LAST_EXERCISE_FAILED or overdue, a walk through the runbook counts as a pass but measures nothing, twenty reports of one exercise make one exercise, a later pass clears a failure and a late report moves nothing forward, a backup-restore plan cannot promise to lose nothing, the runbook is an identifier, two people pausing at once get one winner, staff only, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/dr-smoke.sh
 
       - name: Cloud inventory smoke (AWS and Azure resources, the provider's id is the identity, twenty reports of one new resource make one, a changed report replaces the snapshot, fixed lists and four tags and nothing a tool says is repeated, judged present or gone when read, a terminated resource that comes back, filters and summary, staff only, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/cloud-inventory-smoke.sh
 
       - name: Procurement smoke (a purchase order approved by the shared approval service, an approver who is not eligible refused, a rejection is final, placed and received in part, the same receipt twenty times at once is one, twenty receipts of one unit against five to arrive leave exactly five, never more than was ordered, a placed order with goods received cannot be cancelled, fixed lists and identifiers with nothing a tool says repeated, staff only, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/procurement-smoke.sh
 
       - name: "Promises contract smoke (every registry answers GET promises/retrieve with the same shape: a verdict of the fixed three, a code only when broken, a status and an instant; a window or a limit out of range is refused, a REQUESTER is refused, another tenant sees nothing)"
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/promises-contract-smoke.sh
 
       - name: Promises alerting smoke (a rule watches the patch, capacity or backup registry, a broken promise opens one alert and one incident with a fixed code, a backup that never ran opens nothing, a promise kept again resolves the alert, staff only)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/promises-alerting-smoke.sh
 
       - name: Starter pack smoke (an edition gets its alert rules, Homelab 2, Team 4, Enterprise 6, each taking the class of its source; a repeat creates nothing, moving up adds only what is missing, a paused rule stays paused, another tenant has none)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/starter-pack-smoke.sh
 
       - name: Netdata connector smoke (against a test double of an agent, the node reaches the discovery queue once, a chart becomes a capacity sample with its dimensions added up and a factor, a failing chart or an unreachable agent fails only what it must, the token is sent and never printed)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/netdata-connector-smoke.sh
 
       - name: Billing smoke (plans, subscriptions, entitlements through the gateway, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/billing-smoke.sh
 
       - name: Inventory smoke (stock movements, no negative balance under concurrency, recorded on the ledger)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/inventory-smoke.sh
 
       - name: Federation smoke (OIDC sign-in, HttpOnly cookie session, refresh rotation, replay revokes)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/federation-smoke.sh
 
       - name: Approval chain smoke (two-stage chain, approver inbox, simultaneous votes lose nothing, reject at stage 2)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/approval-chain-smoke.sh
 
       - name: Plan gating smoke (a plan without the feature is refused at the gateway, plan change and suspension felt)
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/plan-gating-smoke.sh
 
       - name: Gateway smoke
+        timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/gateway-smoke.sh
 
       - name: Service logs
