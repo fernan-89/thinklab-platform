@@ -209,6 +209,9 @@ jobs:
 
       - name: Service logs
         if: failure()
+        # Run 42510028767: this step sat for 9 minutes after a failed start. Without a limit it runs to the job's 40 minutes, the job is cancelled
+        # and GitHub drops the whole job log, which is the only place the cause is written.
+        timeout-minutes: 3
         working-directory: thinklab-platform
         run: |
           mkdir -p .e2e
