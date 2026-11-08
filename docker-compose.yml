@@ -29,7 +29,8 @@ services:
   # kit's transactional outbox (party-authentication user creation) fails. The healthcheck initiates the
   # set on first start and only reports healthy once this node is the writable primary.
   mongo:
-    image: mongo:8.0
+    # The default is the version the platform ships. THINKLAB_MONGO_IMAGE overrides it (the e2e workflow sets mongo:7.0, see there).
+    image: ${THINKLAB_MONGO_IMAGE:-mongo:8.0}
     restart: unless-stopped
     command: ["mongod", "--replSet", "thinklab-rs0", "--bind_ip_all"]
     ports: ["27017:27017"]

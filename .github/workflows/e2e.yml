@@ -28,6 +28,12 @@ jobs:
     # 6.19 to 7.0.13 as affected and 7.0.14 as fixed). Go back to ubuntu-24.04 when the kernel printed by the first step is 7.0.14 or newer.
     runs-on: ubuntu-22.04
     timeout-minutes: 40
+    env:
+      # CI only, temporary: mongo:8.0 refuses to start on Linux kernels 6.19 to 7.0.13 (SERVER-121912) and the hosted runners now have one, so this
+      # job tests against MongoDB 7.0, which MongoDB's notes do not list as affected (this run is what shows whether that holds). The platform still
+      # ships 8.0 (the default in docker-compose.yml).
+      # Remove this line when the kernel printed by the first step is 7.0.14 or newer, so that CI tests the version that ships.
+      THINKLAB_MONGO_IMAGE: mongo:7.0
     steps:
       - name: Kernel of this runner (MongoDB 8.0 does not start on 6.19 to 7.0.13)
         timeout-minutes: 1
