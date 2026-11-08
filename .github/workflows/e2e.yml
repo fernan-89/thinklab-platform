@@ -23,9 +23,14 @@ concurrency:
 
 jobs:
   e2e:
-    runs-on: ubuntu-24.04
+    # ubuntu-22.04 on purpose: the ubuntu-24.04 image now ships a Linux kernel from 6.19 on, and mongo:8.0 refuses to start there
+    # ("MongoDB cannot start: Linux kernel versions 6.19 and newer has a known incompatibility", SERVER-121912; MongoDB documents the range
+    # 6.19 to 7.0.13 as affected and 7.0.14 as fixed). Go back to ubuntu-24.04 when the kernel printed by the first step is 7.0.14 or newer.
+    runs-on: ubuntu-22.04
     timeout-minutes: 40
     steps:
+      - name: Kernel of this runner (MongoDB 8.0 does not start on 6.19 to 7.0.13)
+        run: uname -r
       # The scripts expect the service repositories as siblings of thinklab-platform. The list comes
       # from scripts/stack/services.sh, so wiring a new service into the stack needs no change here.
       - uses: actions/checkout@v7
