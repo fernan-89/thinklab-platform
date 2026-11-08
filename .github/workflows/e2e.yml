@@ -77,12 +77,12 @@ jobs:
         run: |
           # If the stack does not start, say why in this step's own log: the kernel (MongoDB 8.0 refuses 6.19 to 7.0.13), the state of every
           # container and the start of the database's log. The later "Service logs" step has hung before, and this one has not.
-          docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating up -d || {
+          timeout -k 10 540 docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating up -d || {
             code=$?
             echo "::group::Why the stack did not start (exit $code)"
             uname -r
-            docker compose ps -a --format 'table {{.Name}}\t{{.Status}}' | grep -v 'Up ' || true
-            docker compose logs --no-color --tail 30 mongo || true
+            timeout -k 5 20 docker compose ps -a --format 'table {{.Name}}\t{{.Status}}' | grep -v 'Up ' || true
+            timeout -k 5 20 docker compose logs --no-color --tail 30 mongo || true
             echo "::endgroup::"
             exit $code
           }
@@ -104,7 +104,7 @@ jobs:
       - name: Restart it-change-management and it-procurement with their policy ids
         timeout-minutes: 3
         working-directory: thinklab-platform
-        run: docker compose up -d it-change-management it-procurement
+        run: timeout -k 10 150 docker compose up -d it-change-management it-procurement
 
       - name: Wait until they are ready again
         timeout-minutes: 4
@@ -272,11 +272,11 @@ jobs:
         working-directory: thinklab-platform
         run: |
           mkdir -p .e2e
-          docker compose ps -a > .e2e/compose-ps.txt 2>&1 || true
-          docker compose logs --no-color > .e2e/compose.log 2>&1 || true
+          timeout -k 5 20 docker compose ps -a > .e2e/compose-ps.txt 2>&1 || true
+          timeout -k 5 40 docker compose logs --no-color > .e2e/compose.log 2>&1 || true
           # What went wrong must be readable in this log without opening the artifact: the state of every container, and the start of the database's.
           cat .e2e/compose-ps.txt
-          docker compose logs --no-color --tail 40 mongo 2>&1 || true
+          timeout -k 5 20 docker compose logs --no-color --tail 40 mongo 2>&1 || true
           mkdir -p e2e-reports && cp -r .e2e/. e2e-reports/ 2>/dev/null || true
 
       - name: Upload reports
