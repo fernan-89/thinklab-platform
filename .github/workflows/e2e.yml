@@ -217,13 +217,18 @@ jobs:
           # What went wrong must be readable in this log without opening the artifact: the state of every container, and the start of the database's.
           cat .e2e/compose-ps.txt
           docker compose logs --no-color --tail 40 mongo 2>&1 || true
+          mkdir -p e2e-reports && cp -r .e2e/. e2e-reports/ 2>/dev/null || true
 
       - name: Upload reports
         if: always()
+        # A stuck upload ran until the job's 40-minute limit cancelled everything (run 42505975221) and the job log was lost with it.
+        timeout-minutes: 5
         uses: actions/upload-artifact@v7
         with:
           name: e2e-reports
-          path: thinklab-platform/.e2e/
-          # .e2e is a hidden folder, which upload-artifact leaves out unless told otherwise: until now no log was ever uploaded.
+          # .e2e itself is a hidden folder, which upload-artifact leaves out; the failure step copies it to e2e-reports, which is not.
+          path: |
+            thinklab-platform/e2e-reports/
+            thinklab-platform/.e2e/
           include-hidden-files: true
           if-no-files-found: ignore
