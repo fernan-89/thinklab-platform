@@ -15,6 +15,7 @@ concurrency:
 jobs:
   validate-compose:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - name: Validate docker-compose.yml
@@ -22,6 +23,7 @@ jobs:
 
   scripts:
     runs-on: ubuntu-24.04
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       # The editions (scripts/stack/edition.sh) name the services they start: every one must still be defined in docker-compose.yml, or
@@ -78,6 +80,7 @@ jobs:
   # them with PowerShell 7 and cannot see that; this one uses the shell Windows ships with.
   windows-powershell:
     runs-on: windows-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v7
       - name: The PowerShell scripts parse in Windows PowerShell 5.1 and need nothing from PowerShell 7
@@ -104,6 +107,7 @@ jobs:
   # 18 days (a step name with ": " in the middle of an unquoted value) and nothing here noticed. This reads every workflow with a real YAML parser.
   workflow-yaml:
     runs-on: ubuntu-24.04
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v7
       - name: The workflow files are valid YAML
