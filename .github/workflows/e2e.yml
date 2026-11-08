@@ -68,7 +68,18 @@ jobs:
         timeout-minutes: 10
         env:
           COMPOSE_PARALLEL_LIMIT: "4"
-        run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating up -d
+        run: |
+          # If the stack does not start, say why in this step's own log: the kernel (MongoDB 8.0 refuses 6.19 to 7.0.13), the state of every
+          # container and the start of the database's log. The later "Service logs" step has hung before, and this one has not.
+          docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating up -d || {
+            code=$?
+            echo "::group::Why the stack did not start (exit $code)"
+            uname -r
+            docker compose ps -a --format 'table {{.Name}}\t{{.Status}}' | grep -v 'Up ' || true
+            docker compose logs --no-color --tail 30 mongo || true
+            echo "::endgroup::"
+            exit $code
+          }
 
       - name: Wait until every service is ready
         run: thinklab-platform/scripts/stack/wait-ready.sh 240
