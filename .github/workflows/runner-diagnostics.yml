@@ -52,3 +52,22 @@ jobs:
           docker ps -a --filter name=mongo-70 --format '{{.Names}}: {{.Status}}' || true
           docker logs --tail 5 mongo-70 2>&1 | cut -c1-300 || true
           docker rm -f mongo-70 >/dev/null 2>&1 || true
+      - name: Healthcheck without a shell (busybox from a volume, run inside a distroless image)
+        timeout-minutes: 4
+        run: |
+          # The service images are distroless: no shell, no curl, no wget. A static busybox copied to a volume can be mounted into them and used as the
+          # healthcheck command. This proves it on real Docker: exit 0 for a 200, non-zero for a 404 and for no server, running as the image's nonroot user.
+          docker volume create tools >/dev/null
+          timeout -k 5 120 docker run --rm -v tools:/tools busybox:1.37.0-musl cp /bin/busybox /tools/busybox || echo "COULD NOT COPY BUSYBOX"
+          docker network create probe-net >/dev/null
+          timeout -k 5 120 docker run -d --name probe-web --network probe-net nginx:1.27-alpine >/dev/null || echo "COULD NOT START NGINX"
+          sleep 4
+          image=gcr.io/distroless/java21-debian12:nonroot
+          probe() { timeout -k 5 90 docker run --rm --network probe-net -v tools:/tools:ro --entrypoint /tools/busybox "$image" wget -q -O /dev/null -T 3 "$1"; echo "  exit=$?"; }
+          echo "who runs it:"; timeout -k 5 90 docker run --rm -v tools:/tools:ro --entrypoint /tools/busybox "$image" id
+          echo "GET / on a running server (expect exit=0):"; probe http://probe-web/
+          echo "GET /nope, a 404 (expect non-zero):"; probe http://probe-web/nope
+          echo "no server at all (expect non-zero):"; probe http://127.0.0.1:9/
+          docker rm -f probe-web >/dev/null 2>&1 || true
+          docker network rm probe-net >/dev/null 2>&1 || true
+          docker volume rm tools >/dev/null 2>&1 || true
