@@ -125,3 +125,15 @@ jobs:
                   print('FAIL ' + path + ': ' + str(error).replace('\n', ' '))
           sys.exit(1 if bad else 0)
           PY
+
+  # Every service and application must say to Docker whether it is healthy. This reads the resolved compose file of every profile and fails if one has no
+  # healthcheck (only the tools one-shot is exempt), if a Java service asks anything but /health/readiness, or if it does not mount the tools volume read-only.
+  # --self-test then mutates the configuration in seven ways and fails if the check does not catch each of them.
+  compose-health:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: Every service of docker-compose.yml has a healthcheck
+        timeout-minutes: 2
+        run: python3 scripts/stack/check-compose-health.py --self-test
