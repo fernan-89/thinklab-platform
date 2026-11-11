@@ -82,6 +82,8 @@ jobs:
             code=$?
             echo "::group::Why the stack did not start (exit $code)"
             uname -r
+            echo "TCP ports 8000-9999 listening (the platform publishes 8080-8114, 8188, 9000, 9190, 9290, 9291):"
+            sudo ss -ltnp 2>/dev/null | awk 'NR==1 || /:(8[0-9][0-9][0-9]|9[0-9][0-9][0-9])[[:space:]]/' | cut -c1-170 || true
             timeout -k 5 20 docker compose ps -a --format 'table {{.Name}}\t{{.Status}}' | grep -v 'Up ' || true
             timeout -k 5 20 docker compose logs --no-color --tail 30 mongo || true
             echo "::endgroup::"
