@@ -54,7 +54,7 @@ transactional outbox needs) and NATS JetStream (the event backbone: party-authen
 `user.initiated`, which notification-dispatch consumes; it-hardware-maintenance publishes repair
 started/completed, which it-asset-registry consumes to move the Asset in and out of MAINTENANCE). Every
 service except the gateway has its own database; the gateway is a stateless proxy in front of the
-other APIs. The MongoDB image can be overridden with `THINKLAB_MONGO_IMAGE` (default `mongo:8.0`); the e2e workflow uses `mongo:7.0` for now, because 8.0 does not start on the Linux kernels 6.19 to 7.0.13 of the hosted runners.
+other APIs.
 
 ## Run the stack
 
