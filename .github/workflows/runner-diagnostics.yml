@@ -3,9 +3,13 @@ name: runner-diagnostics
 # What a hosted runner is, in a few minutes and with a job log that survives: the e2e job has hung four times in a row, and when a run is cancelled
 # GitHub drops its log, so the cause could not be read. This one always finishes. It prints the kernel, the memory, the disk and the Docker version of each
 # runner image, then starts MongoDB 8.0 and 7.0 alone for a few seconds and prints what each one says.
-# Run it by hand (Actions > runner-diagnostics > Run workflow); it also runs on a pull request that changes this file.
+# Run it by hand (Actions > runner-diagnostics > Run workflow); it also runs on a pull request that changes this file, and every Monday: a runner image changes without
+# notice (that is how the kernel of ubuntu-24.04 and a service on port 8084 of ubuntu-22.04 broke the e2e job), and a scheduled run says so before the next e2e does.
+# It fails if mongo:8.0 does not start on ubuntu-22.04 (what the e2e job uses), and prints a notice when it starts on ubuntu-24.04 (the e2e job can go back to it).
 on:
   workflow_dispatch:
+  schedule:
+    - cron: '23 5 * * 1'
   pull_request:
     paths: ['.github/workflows/runner-diagnostics.yml']
 
@@ -45,7 +49,12 @@ jobs:
           sleep 15
           docker ps -a --filter name=mongo-80 --format '{{.Names}}: {{.Status}}' || true
           docker logs --tail 5 mongo-80 2>&1 | cut -c1-300 || true
+          running=$(docker inspect --format '{{.State.Running}}' mongo-80 2>/dev/null || echo false)
           docker rm -f mongo-80 >/dev/null 2>&1 || true
+          # The e2e job runs on ubuntu-22.04 with mongo:8.0: if it cannot start there the next e2e fails, so a scheduled run must say it first.
+          if [ "${{ matrix.runner }}" = "ubuntu-22.04" ] && [ "$running" != "true" ]; then echo "::error::mongo:8.0 does not start on ubuntu-22.04, the runner the e2e job uses"; exit 1; fi
+          # ubuntu-24.04 is where mongo:8.0 does not start (kernel 6.19 to 7.0.13): when it starts there, the e2e job can go back to it.
+          if [ "${{ matrix.runner }}" = "ubuntu-24.04" ] && [ "$running" = "true" ]; then echo "::notice::mongo:8.0 now starts on ubuntu-24.04: the e2e job can go back to it (see the comment on runs-on in e2e.yml)"; fi
       - name: MongoDB 7.0 alone
         timeout-minutes: 3
         run: |
