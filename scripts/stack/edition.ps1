@@ -36,7 +36,7 @@ if (-not $env:THINKLAB_GATEWAY_JAVA_OPTS) { $env:THINKLAB_GATEWAY_JAVA_OPTS = '-
 $budget = if ($env:THINKLAB_FOOTPRINT_BUDGET_MIB) { [double]$env:THINKLAB_FOOTPRINT_BUDGET_MIB } else { [double]$budgetDefault }
 
 switch ($Command) {
-    'up' { docker compose up -d --no-build @services; exit $LASTEXITCODE }
+    'up' { docker compose run --rm --no-deps tools; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; docker compose up -d --no-build @services; exit $LASTEXITCODE }   # tools fills the volume the healthchecks run from (one-shot, not in the lists: footprint counts running containers)
     'down' { docker compose stop @services; exit $LASTEXITCODE }
     'services' { $services; exit 0 }
     'footprint' {

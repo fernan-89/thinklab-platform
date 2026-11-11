@@ -40,7 +40,7 @@ export THINKLAB_GATEWAY_JAVA_OPTS="${THINKLAB_GATEWAY_JAVA_OPTS:--Xmx256m -Xss51
 budget="${THINKLAB_FOOTPRINT_BUDGET_MIB:-$budget_default}"
 
 case "$command" in
-  up) docker compose up -d --no-build "${services[@]}" ;;
+  up) docker compose run --rm --no-deps tools && docker compose up -d --no-build "${services[@]}" ;;   # tools fills the volume the healthchecks run from (one-shot, not in the lists: footprint counts running containers)
   down) docker compose stop "${services[@]}" ;;
   services) printf '%s\n' "${services[@]}" ;;
   footprint)
