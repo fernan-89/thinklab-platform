@@ -112,7 +112,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: The workflow files are valid YAML
         run: |
-          python3 -m pip install --quiet pyyaml
+          python3 -m pip install --quiet pyyaml==6.0.3
           python3 - <<'PY'
           import glob, sys, yaml
           bad = 0
