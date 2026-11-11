@@ -20,8 +20,9 @@ x-healthcheck: &healthcheck
   retries: 6
   start_period: 90s
 
-# The test doubles (node:22-alpine) have a busybox wget of their own, so they need no tools volume. They start in about a second; only the URL differs.
-x-mock-healthcheck: &mock-healthcheck
+# The test doubles (node:22-alpine) and the web app (nginx:alpine) have a busybox wget of their own, so they need no tools volume. They start in about a second;
+# only the URL differs.
+x-alpine-healthcheck: &alpine-healthcheck
   interval: 5s
   timeout: 5s
   retries: 6
@@ -367,7 +368,7 @@ services:
     image: node:22-alpine
     command: ["node", "/app/mock-ticketing.mjs"]
     healthcheck:
-      <<: *mock-healthcheck
+      <<: *alpine-healthcheck
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:9100/__mock/state"]
     ports: ["9190:9100"]
     environment:
@@ -533,7 +534,7 @@ services:
     image: node:22-alpine
     command: ["node", "/app/mock-target.mjs"]
     healthcheck:
-      <<: *mock-healthcheck
+      <<: *alpine-healthcheck
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:9200/__mock/state"]
     ports: ["9290:9200", "9291:9201"]
     volumes:
@@ -562,7 +563,7 @@ services:
     image: node:22-alpine
     command: ["node", "/app/mock-oidc-provider.mjs"]
     healthcheck:
-      <<: *mock-healthcheck
+      <<: *alpine-healthcheck
       test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:9000/jwks"]
     ports: ["9000:9000"]
     environment:
@@ -664,6 +665,9 @@ services:
     image: thinklab/web:local
     restart: unless-stopped
     ports: ["3000:80"]
+    healthcheck:
+      <<: *alpine-healthcheck
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1/healthz"]
     depends_on: [gateway]
 
 volumes:
