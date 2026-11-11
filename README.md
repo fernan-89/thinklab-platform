@@ -188,7 +188,7 @@ With the stack up (either way):
 | `scripts/e2e/approval-chain-smoke.sh` (`approval-chain-smoke.ps1`) | approval chains through the gateway (workflow-approval ADR-033/034): a two-stage policy, a request that waits on one stage at a time, the approver inbox, two reviewers voting at the same instant (no vote lost: the loser of a race retries), a reject at stage 2, a policy edit that leaves a filed request alone, tenant isolation |
 | `scripts/e2e/plan-gating-smoke.sh` (`plan-gating-smoke.ps1`) | plan-based feature gating at the gateway (ADR-026) against a second gateway with gating on (`--profile plan-gating`, port 8188): a plan without `audit`/`sso` is refused 403, a plan change and a suspension are felt within the cache time, unlisted domains and sign-in are untouched |
 | `scripts/e2e/gateway-smoke.sh` | the gateway routes to each upstream API |
-| `scripts/e2e/secured-smoke.ps1` | the security stack (tokens, JWKS, revocation) with `THINKLAB_SECURITY_ENABLED=true` |
+| `scripts/e2e/secured-smoke.ps1` | the security stack (tokens, JWKS, revocation) with `THINKLAB_SECURITY_ENABLED=true`; on Docker, recreate five services with `docker-compose.secured.yml` (the header of that file has the commands) - 42/42 on Windows PowerShell 5.1 |
 
 The bash runners need `newman` on the `PATH` (`npm install -g newman`). Reports (JUnit XML and the
 exported Postman environments) land in `.e2e/reports/`.

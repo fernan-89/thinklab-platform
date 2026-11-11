@@ -1,0 +1,32 @@
+# Turns security on for the services the secured smoke needs, on top of docker-compose.yml:
+#
+#   export THINKLAB_BOOTSTRAP_SECRET=<a long value for this run>  THINKLAB_CLIENT_SECRET=<another one>
+#   docker compose -f docker-compose.yml -f docker-compose.secured.yml up -d --no-deps --force-recreate \
+#       party-authentication party-reference-data-directory it-asset-registry it-operation-window gateway
+#   powershell -File scripts/e2e/secured-smoke.ps1 -BootstrapSecret "$THINKLAB_BOOTSTRAP_SECRET"
+#
+# Run the same `up` without the second file to put them back. Both secrets are required (compose stops if one is missing); party-authentication signs
+# with an ephemeral key unless THINKLAB_JWT_PRIVATE_KEY is also set. Only these five services are listed: with the rest of the stack unsecured, the
+# smoke still proves tokens, refresh rotation, revocation, the forged-tenant check and the rate limit (a burst of 5) end to end.
+services:
+  party-authentication:
+    environment:
+      THINKLAB_SECURITY_ENABLED: "true"
+      THINKLAB_BOOTSTRAP_SECRET: ${THINKLAB_BOOTSTRAP_SECRET:?set THINKLAB_BOOTSTRAP_SECRET}
+      THINKLAB_CLIENT_SECRET: ${THINKLAB_CLIENT_SECRET:?set THINKLAB_CLIENT_SECRET}
+  party-reference-data-directory:
+    environment:
+      THINKLAB_SECURITY_ENABLED: "true"
+      THINKLAB_CLIENT_SECRET: ${THINKLAB_CLIENT_SECRET:?set THINKLAB_CLIENT_SECRET}
+  it-asset-registry:
+    environment:
+      THINKLAB_SECURITY_ENABLED: "true"
+      THINKLAB_CLIENT_SECRET: ${THINKLAB_CLIENT_SECRET:?set THINKLAB_CLIENT_SECRET}
+  it-operation-window:
+    environment:
+      THINKLAB_SECURITY_ENABLED: "true"
+      THINKLAB_CLIENT_SECRET: ${THINKLAB_CLIENT_SECRET:?set THINKLAB_CLIENT_SECRET}
+  gateway:
+    environment:
+      THINKLAB_SECURITY_ENABLED: "true"
+      GATEWAY_RATE_LIMIT_BURST: "5"
