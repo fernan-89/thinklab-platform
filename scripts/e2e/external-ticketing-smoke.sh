@@ -290,11 +290,13 @@ check_equal 'no credential or webhook token appears in any answer' True \
   "$(truth bash -c '! grep -qF -e "$1" -e "$2" -e "$3" -e "$4" "$5"' _ "$jira_auth_value" "$snow_auth_value" "$jira_hook_value" "$snow_hook_value" "$tmp/all")"
 trail=$(stb GET "$ext/connection/$jira/audit-log/retrieve")
 check_equal 'nor in the audit trail of a connection' True "$(truth bash -c '[[ "$1" != *"$2"* && "$1" != *"$3"* ]]' _ "$trail" "$jira_auth_value" "$jira_hook_value")"
-recorded=0
-for _ in $(seq 1 20); do
+# The gateway writes to the ledger asynchronously, one entry at a time, in order: the refused calls made last (status=403) land last, so wait for one
+# of them as well as for the count, or the check below runs before it is there.
+recorded=0; refused=False
+for _ in $(seq 1 30); do
   entries=$(api_body "$(api GET "$ledger_api/retrieve?limit=500" "" "$tenant")")
-  recorded=$(python3 -c "import json,sys; print(sum(1 for e in json.load(sys.stdin) if e['resourceType']=='it-external-ticketing'))" <<<"$entries")
-  [[ "$recorded" -ge 40 ]] && break
+  read -r recorded refused < <(python3 -c "import json,sys; rows=[e for e in json.load(sys.stdin) if e['resourceType']=='it-external-ticketing']; print(len(rows), any(e['detail']=='status=403' for e in rows))" <<<"$entries")
+  [[ "$recorded" -ge 40 && "$refused" == True ]] && break
   sleep 0.5
 done
 check_equal 'the gateway recorded the mutations on the ledger (many, refused ones included)' True "$([[ "$recorded" -ge 40 ]] && echo True || echo False)"
