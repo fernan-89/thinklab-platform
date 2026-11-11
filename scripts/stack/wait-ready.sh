@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Waits until every service of the compose stack reports /health/readiness UP (default 180s).
+# Waits until every service of the compose stack reports /health/readiness UP and /health/liveness UP (default 180s): ready to take traffic, and alive.
 # On timeout it prints the logs of the services that are not ready and exits 1.
 set -uo pipefail
 source "$(dirname "$0")/services.sh"
@@ -11,7 +11,7 @@ while ((${#pending[@]} > 0 && SECONDS < deadline)); do
   still=()
   for entry in "${pending[@]}"; do
     IFS='|' read -r repo service port <<<"$entry"
-    if curl -fs -o /dev/null --max-time 3 "http://localhost:$port/health/readiness"; then
+    if curl -fs -o /dev/null --max-time 3 "http://localhost:$port/health/readiness" && curl -fs -o /dev/null --max-time 3 "http://localhost:$port/health/liveness"; then
       echo "ready: $service (:$port)"
     else
       still+=("$entry")
@@ -26,6 +26,7 @@ if ((${#pending[@]} > 0)); then
     IFS='|' read -r repo service port <<<"$entry"
     echo "NOT READY: $service (:$port)"
     curl -sS --max-time 3 "http://localhost:$port/health/readiness"; echo
+    curl -sS --max-time 3 "http://localhost:$port/health/liveness"; echo
     docker compose -f "$PLATFORM_DIR/docker-compose.yml" logs --tail 80 "$service"
   done
   exit 1
