@@ -65,12 +65,39 @@ All scripts expect the service repositories cloned as siblings of this one (`../
 ```bash
 scripts/stack/build.sh           # gradlew installDist in every service (Windows: scripts\stack\build.ps1)
 docker compose up -d --build
-scripts/stack/wait-ready.sh      # waits for /health/readiness on every service
+scripts/stack/wait-ready.sh      # waits for /health/readiness and /health/liveness on every service
 ```
 
 The web app (`../thinklab-web`) is behind a compose profile so the commands above never need it:
 `docker compose --profile web up -d --build` serves it on http://localhost:3000 (`scripts/e2e/seed-demo.ps1` creates a demo tenant to sign in with).
 
+### Health: liveness, readiness and the Docker healthcheck
+
+Every service answers two probes on its own port (8080 inside the network, the host ports in the table above):
+
+| Probe | Means | Answers 200 when |
+|---|---|---|
+| `GET /health/liveness` | the process is alive | the service is running |
+| `GET /health/readiness` | send me traffic | the service reports itself ready to take traffic |
+
+Every service and application of `docker-compose.yml` also has a **Docker healthcheck**, so `docker compose ps` shows `(healthy)`. The only service without one is `tools`, a one-shot that exits with 0.
+
+| What | Healthcheck |
+|---|---|
+| The 36 Java services (the 35 and the second gateway) | `/tools/busybox wget` against `/health/readiness`, every 10 s, 6 retries, 90 s start period |
+| `mongo`, `nats`, `anchor-store` | their own checks (the replica set primary; the NATS `/healthz`; the anchor bucket) |
+| `mock-target`, `mock-ticketing`, `mock-oidc` | `wget` of a cheap route of each double |
+| `web` | `wget` of the `/healthz` route of its nginx |
+
+The service images are distroless (no shell, no `curl`, no `wget`), so the `tools` service copies a static busybox into a volume that every Java service mounts read-only, and the healthcheck runs from there. The gateway asks `party-authentication`'s liveness as part of its readiness, so it only turns healthy once sign-in is up. The start order of the services does not depend on health (`depends_on` does not wait for it).
+
+Three things keep this true:
+
+- `scripts/stack/wait-ready.sh` waits for readiness **and** liveness of every service on its host port.
+- `scripts/stack/assert-healthy.sh` waits for Docker's own verdict (`healthy`) of every container and fails listing the ones that are not; the `e2e` job runs it.
+- `scripts/stack/check-compose-health.py` (the `compose-health` CI job) fails if a service of `docker-compose.yml` has no healthcheck, if a Java service asks anything but `/health/readiness`, or if it does not mount the `tools` volume; `--self-test` proves it catches each of those.
+
+For Kubernetes (no manifests live here): `livenessProbe` is `GET /health/liveness` and `readinessProbe` is `GET /health/readiness` on port 8080.
 ### Editions and their memory
 
 `scripts/stack/edition.sh <homelab|team|enterprise> up|down|footprint|services` (`edition.ps1`) starts only the services of an edition, each containing the one before it
