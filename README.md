@@ -56,6 +56,8 @@ started/completed, which it-asset-registry consumes to move the Asset in and out
 service except the gateway has its own database; the gateway is a stateless proxy in front of the
 other APIs.
 
+**MongoDB and the Linux kernel.** `mongo:8.0` refuses to start on a host whose kernel is 6.19 to 7.0.13 (the container exits with `Linux kernel versions 6.19 and newer has a known incompatibility`, SERVER-121912; MongoDB documents 7.0.14 as the fix). The hosted `ubuntu-24.04` runners are on such a kernel, which is why the e2e job runs on `ubuntu-22.04`. On a host like that, `THINKLAB_MONGO_IMAGE=mongo:7.0 docker compose up -d` replaces the image (the default stays `mongo:8.0`). Checked: `mongo:7.0` starts alone on the affected kernel; **the platform as a whole has not been run on 7.0**, so treat that as a way out, not as a supported configuration. The weekly `runner-diagnostics` workflow says when `mongo:8.0` starts on `ubuntu-24.04` again.
+
 ## Run the stack
 
 All scripts expect the service repositories cloned as siblings of this one (`../micronaut-*-service`).

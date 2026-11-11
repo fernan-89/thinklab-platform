@@ -60,7 +60,8 @@ services:
   # kit's transactional outbox (party-authentication user creation) fails. The healthcheck initiates the
   # set on first start and only reports healthy once this node is the writable primary.
   mongo:
-    image: mongo:8.0
+    # The version the platform ships. THINKLAB_MONGO_IMAGE replaces it for a host whose Linux kernel is 6.19 to 7.0.13, where mongo:8.0 does not start (README, Infrastructure).
+    image: ${THINKLAB_MONGO_IMAGE:-mongo:8.0}
     restart: unless-stopped
     command: ["mongod", "--replSet", "thinklab-rs0", "--bind_ip_all"]
     ports: ["27017:27017"]
