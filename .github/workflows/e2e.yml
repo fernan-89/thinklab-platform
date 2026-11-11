@@ -71,13 +71,14 @@ jobs:
 
       - name: Start the stack
         working-directory: thinklab-platform
-        timeout-minutes: 10
+        timeout-minutes: 15
         env:
           COMPOSE_PARALLEL_LIMIT: "4"
         run: |
-          # If the stack does not start, say why in this step's own log: the kernel (MongoDB 8.0 refuses 6.19 to 7.0.13), the state of every
-          # container and the start of the database's log. The later "Service logs" step has hung before, and this one has not.
-          timeout -k 10 540 docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating up -d || {
+          # In stages (scripts/stack/start-staged.sh): the infrastructure, then the services a few at a time, each group waited for. About forty JVMs
+          # starting at once on a 4-CPU runner can starve it until the job hangs. Each stage prints the time, the load and the free memory.
+          # If the stack does not start, say why in this step's own log: the kernel, the state of every container and the start of the database's log.
+          timeout -k 10 840 bash scripts/stack/start-staged.sh || {
             code=$?
             echo "::group::Why the stack did not start (exit $code)"
             uname -r
