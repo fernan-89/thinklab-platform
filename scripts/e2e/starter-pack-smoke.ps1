@@ -11,6 +11,9 @@
 #>
 param([string]$GatewayUrl = 'http://localhost:8088')
 
+# The child scripts run in the PowerShell that runs this one (Windows PowerShell 5.1 or pwsh 7), never in a `pwsh` that may not be installed.
+$powershell = (Get-Process -Id $PID).Path
+
 $ErrorActionPreference = 'Stop'
 $results = New-Object System.Collections.ArrayList
 $pack = Join-Path $PSScriptRoot '..\stack\seed-starter-pack.ps1'
@@ -45,7 +48,9 @@ function Sources { (@(Rules) | ForEach-Object { if ($_.source) { $_.source } els
 # Runs the pack in its own process, so its exit code and its last line are what a caller sees.
 function Pack([string]$Edition, [string]$Tenant = $tenantId) {
     $env:GATEWAY_URL = $GatewayUrl
-    $out = & pwsh -NoProfile -NonInteractive -File $pack -Edition $Edition -OrganisationId $Tenant -RequesterId $requester 2>&1
+    $previous = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+    $out = & $powershell -NoProfile -NonInteractive -File $pack -Edition $Edition -OrganisationId $Tenant -RequesterId $requester 2>&1
+    $ErrorActionPreference = $previous
     [pscustomobject]@{ Code = $LASTEXITCODE; Last = (@($out | ForEach-Object { "$_" } | Where-Object { $_ -match ': \d+ created, ' }) | Select-Object -Last 1) }
 }
 
@@ -82,9 +87,14 @@ Assert-Equal 'the cloud resource rule is AVAILABILITY' ((@(Rules | Where-Object 
 # 5. The tenant, and a wrong call.
 Assert-Equal 'another tenant has none of it' @((Invoke-Api GET "$alr/rule/retrieve" @{ 'X-Tenant-Id' = [guid]::NewGuid().ToString(); 'X-Executor' = 'smoke' }).Body).Count 0
 $env:GATEWAY_URL = $GatewayUrl
-& pwsh -NoProfile -NonInteractive -File $pack -Edition 'NOPE' -OrganisationId $tenantId -RequesterId $requester *> $null
+# In Windows PowerShell 5.1 a native command's stderr becomes a terminating error under 'Stop'; here a refusal is the answer being checked.
+$ErrorActionPreference = 'Continue'
+& $powershell -NoProfile -NonInteractive -File $pack -Edition 'NOPE' -OrganisationId $tenantId -RequesterId $requester *> $null
+$ErrorActionPreference = 'Stop'
 Assert-Equal 'an unknown edition is refused' ($LASTEXITCODE -ne 0) $true
-& pwsh -NoProfile -NonInteractive -File $pack -Edition 'HOMELAB' *> $null
+$ErrorActionPreference = 'Continue'
+& $powershell -NoProfile -NonInteractive -File $pack -Edition 'HOMELAB' *> $null
+$ErrorActionPreference = 'Stop'
 Assert-Equal 'a missing argument is refused' ($LASTEXITCODE -ne 0) $true
 
 $results | Format-Table -AutoSize | Out-String | Write-Output

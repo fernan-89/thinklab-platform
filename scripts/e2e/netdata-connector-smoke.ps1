@@ -16,6 +16,9 @@ param(
     [int]$MockPort = 19998
 )
 
+# The child scripts run in the PowerShell that runs this one (Windows PowerShell 5.1 or pwsh 7), never in a `pwsh` that may not be installed.
+$powershell = (Get-Process -Id $PID).Path
+
 $ErrorActionPreference = 'Stop'
 $results = New-Object System.Collections.ArrayList
 $here = $PSScriptRoot
@@ -80,7 +83,9 @@ try {
     # Runs the connector in its own process, so its exit code and its output are what a caller sees.
     function Sync([string[]]$Arguments, [string]$WithToken = $token) {
         $env:NETDATA_TOKEN = $WithToken; $env:GATEWAY_URL = $GatewayUrl
-        $out = & pwsh -NoProfile -File $connector @Arguments 2>&1
+        $previous = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
+        $out = & $powershell -NoProfile -File $connector @Arguments 2>&1
+        $ErrorActionPreference = $previous
         [pscustomobject]@{ Code = $LASTEXITCODE; Out = ($out | Out-String); Last = (@($out | ForEach-Object { "$_" } | Where-Object { $_ -like 'netdata-sync:*' }) | Select-Object -Last 1) }
     }
     function Last-Value([string]$Id) { '{0:0.00}' -f [double](Invoke-Api GET "$cap/$Id/retrieve" $staff).Body.lastValue }
