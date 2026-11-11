@@ -63,11 +63,13 @@ jobs:
           timeout -k 5 120 docker run -d --name probe-web --network probe-net nginx:1.27-alpine >/dev/null || echo "COULD NOT START NGINX"
           sleep 4
           image=gcr.io/distroless/java21-debian12:nonroot
-          probe() { timeout -k 5 90 docker run --rm --network probe-net -v tools:/tools:ro --entrypoint /tools/busybox "$image" wget -q -O /dev/null -T 3 "$1"; echo "  exit=$?"; }
+          # GitHub runs this with `bash -e`: a probe that fails (which is what a 404 must do) would end the step before the code is printed, so the code is captured.
+          probe() { rc=0; timeout -k 5 90 docker run --rm --network probe-net -v tools:/tools:ro --entrypoint /tools/busybox "$image" wget -q -O /dev/null -T 3 "$1" || rc=$?; echo "  exit=$rc"; }
           echo "who runs it:"; timeout -k 5 90 docker run --rm -v tools:/tools:ro --entrypoint /tools/busybox "$image" id
-          echo "GET / on a running server (expect exit=0):"; probe http://probe-web/
-          echo "GET /nope, a 404 (expect non-zero):"; probe http://probe-web/nope
-          echo "no server at all (expect non-zero):"; probe http://127.0.0.1:9/
+          echo "GET / on a running server (expect exit=0):"; probe http://probe-web/; got_200=$rc
+          echo "GET /nope, a 404 (expect non-zero):"; probe http://probe-web/nope; got_404=$rc
+          echo "no server at all (expect non-zero):"; probe http://127.0.0.1:9/; got_none=$rc
           docker rm -f probe-web >/dev/null 2>&1 || true
           docker network rm probe-net >/dev/null 2>&1 || true
           docker volume rm tools >/dev/null 2>&1 || true
+          if [ "$got_200" -eq 0 ] && [ "$got_404" -ne 0 ] && [ "$got_none" -ne 0 ]; then echo "TECHNIQUE OK: 200 gives 0, 404 and no server give non-zero"; else echo "TECHNIQUE DID NOT BEHAVE AS EXPECTED (200=$got_200, 404=$got_404, none=$got_none)"; exit 1; fi
