@@ -7,8 +7,9 @@
 # `docker compose up -d it-change-management` again to recreate just that one container with the real
 # ids (compose detects the changed environment and restarts it - nothing else is touched).
 #
-# It also provisions the purchase-order policy of it-procurement (one approval, two eligible approvers) and writes .e2e/procurement-policy.json for procurement-smoke.sh
-# (the same tenant: an approval policy belongs to a tenant), printing THINKLAB_PO_POLICY_ID too.
+# It also provisions the purchase-order policy of it-procurement (one approval, two eligible approvers) and writes .e2e/procurement-policy.json for the smokes that
+# send purchase orders for approval. it-procurement needs no restart: the policy of an order is that of its approval band (procurement ADR-036), and each smoke makes
+# a band at 0 for its own tenant with this policy.
 #
 # Writes thinklab-platform/.e2e/change-management-policies.json (same schema start-local-stack.ps1's own
 # provisioning step writes, so change-management-smoke.sh can read it the same way its PowerShell
@@ -64,4 +65,3 @@ json.dump({'tenantId': sys.argv[1], 'policyId': sys.argv[2], 'approverIds': sys.
 echo "CAB policy [$cab_id] ECAB policy [$ecab_id] purchase-order policy [$po_id]" >&2
 echo "THINKLAB_CAB_POLICY_ID=$cab_id"
 echo "THINKLAB_ECAB_POLICY_ID=$ecab_id"
-echo "THINKLAB_PO_POLICY_ID=$po_id"

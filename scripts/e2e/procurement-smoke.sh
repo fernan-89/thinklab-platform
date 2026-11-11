@@ -6,8 +6,8 @@
 # order with goods received cannot be cancelled, a rejection is final, fixed lists and identifiers (nothing a tool says is repeated), staff only, the tenant, and
 # every mutation on the ledger.
 #
-# Needs the purchase-order ApprovalPolicy provision-change-management.sh writes to thinklab-platform/.e2e/procurement-policy.json, and it-procurement
-# restarted with THINKLAB_PO_POLICY_ID set from it (see .github/workflows/e2e.yml).
+# Needs the purchase-order ApprovalPolicy provision-change-management.sh writes to thinklab-platform/.e2e/procurement-policy.json. The smoke makes its own approval
+# bands (procurement ADR-036) with that policy: no band, no submission; the band of an order is the one with the greatest lower bound not above its total.
 set -uo pipefail
 gateway="${GATEWAY_URL:-http://localhost:8088}"
 po="$gateway/it-procurement/v1"
@@ -79,10 +79,35 @@ check_equal 'a draft is updated (204): the lines are replaced and the total foll
   "$(st PUT "$po/$order/update" "{\"vendorId\":\"$vendor\",\"expectedOn\":null,\"lines\":$(line_json PEN-BLUE 20)}")/$(field "$order" lines | python3 -c "import sys,ast; print(len(ast.literal_eval(sys.stdin.read())))")/$(field "$order" total)"
 check_equal 'the list finds it by status and by vendor, and not by another status' "$order/0" "$(stb GET "$po/retrieve?status=DRAFT&vendorId=$vendor" | json "[0]['id']")/$(stb GET "$po/retrieve?status=APPROVED" | count)"
 
+# 1b. Approval bands (procurement ADR-036): no band, no submission; the band of an order is the active one with the greatest lower bound not above its total.
+policy_id=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['policyId'])" "$policy_file")
+no_band=$(api PUT "$po/$order/control/submit" "" "${staff[@]}")
+check_equal 'with no approval band an order cannot be sent for approval: 502 ERR-PRC-00502, and it stays a draft' '502/ERR-PRC-00502/DRAFT' \
+  "$(api_status "$no_band")/$(api_body "$no_band" | json "['error_code']")/$(field "$order" status)"
+band_low_made=$(api POST "$po/band/initiate" "{\"currency\":\"BRL\",\"fromAmount\":0,\"policyId\":\"$policy_id\"}" "${staff[@]}")
+band_high_made=$(api POST "$po/band/initiate" "{\"currency\":\"BRL\",\"fromAmount\":10000.00,\"policyId\":\"$policy_id\"}" "${staff[@]}")
+band_low=$(api_body "$band_low_made" | json "['id']"); band_high=$(api_body "$band_high_made" | json "['id']")
+check_equal 'two bands are made (201 each): ACTIVE, from 0 and from 10000.00 in BRL, with the policy' '201/201/ACTIVE/0.0/10000.0/True' \
+  "$(api_status "$band_low_made")/$(api_status "$band_high_made")/$(api_body "$band_low_made" | json "['status']")/$(api_body "$band_low_made" | json "['fromAmount']")/$(api_body "$band_high_made" | json "['fromAmount']")/$([[ "$(api_body "$band_high_made" | json "['policyId']")" == "$policy_id" ]] && echo True || echo False)"
+check_equal 'a second active band of the currency at the same amount is a conflict (409)' 409 "$(st POST "$po/band/initiate" "{\"currency\":\"BRL\",\"fromAmount\":10000.00,\"policyId\":\"$policy_id\"}")"
+check_equal 'the same amount in another currency is another band (201)' 201 "$(st POST "$po/band/initiate" "{\"currency\":\"USD\",\"fromAmount\":10000.00,\"policyId\":\"$policy_id\"}")"
+check_equal 'the BRL bands are read lowest first, and the currency filter leaves out USD' '2/0.0/10000.0/3' \
+  "$(stb GET "$po/band/retrieve?currency=BRL" | count)/$(stb GET "$po/band/retrieve?currency=BRL" | json "[0]['fromAmount']")/$(stb GET "$po/band/retrieve?currency=BRL" | json "[1]['fromAmount']")/$(stb GET "$po/band/retrieve" | count)"
+check_equal 'a negative lower bound, one with three decimals and an unknown currency are refused (400 each)' '400/400/400' \
+  "$(st POST "$po/band/initiate" "{\"currency\":\"BRL\",\"fromAmount\":-1,\"policyId\":\"$policy_id\"}")/$(st POST "$po/band/initiate" "{\"currency\":\"BRL\",\"fromAmount\":1.001,\"policyId\":\"$policy_id\"}")/$(st POST "$po/band/initiate" "{\"currency\":\"GBP\",\"fromAmount\":1,\"policyId\":\"$policy_id\"}")"
+check_equal 'a REQUESTER can neither make, read nor retire a band (403 each)' '403/403/403' \
+  "$(api_status "$(rq POST "$po/band/initiate" "{\"currency\":\"BRL\",\"fromAmount\":5,\"policyId\":\"$policy_id\"}")")/$(api_status "$(rq GET "$po/band/retrieve")")/$(api_status "$(rq PUT "$po/band/$band_low/control/retire")")"
+band_in_trail() { stb GET "$po/$1/audit-log/retrieve" | python3 -c "import json,sys; print(any(sys.argv[1] in e['detail'] for e in json.load(sys.stdin)))" "$2"; }
+
 # 2. Approval through the REAL approval service.
 check_equal 'an order with no lines cannot be sent for approval (400)' 400 "$(st PUT "$po/$(stb POST "$po/initiate" "$(order_json PO-EMPTY '[]')" | json "['id']")/control/submit")"
 check_equal 'it is sent for approval (204): PENDING_APPROVAL, with the approval request kept' '204/PENDING_APPROVAL/True' \
   "$(st PUT "$po/$order/control/submit")/$(field "$order" status)/$([[ -n "$(field "$order" approvalRequestId)" && "$(field "$order" approvalRequestId)" != None ]] && echo True || echo False)"
+check_equal 'the audit entry of the submission names the band the total (30.00) fell in: the one from 0, not the one from 10000.00' 'True/False' "$(band_in_trail "$order" "$band_low")/$(band_in_trail "$order" "$band_high")"
+big=$(stb POST "$po/initiate" "$(order_json PO-BIG)" | json "['id']")
+check_equal 'an order of 15100.00 is sent for approval under the band from 10000.00 (204), and its audit entry says so' '204/True/False' "$(st PUT "$po/$big/control/submit")/$(band_in_trail "$big" "$band_high")/$(band_in_trail "$big" "$band_low")"
+check_equal 'the order that was sent can be cancelled (204), and the band from 10000.00 is retired once (204) and not twice (409)' '204/204/409' "$(st PUT "$po/$big/control/cancel")/$(st PUT "$po/$band_high/control/retire")/$(st PUT "$po/$band_high/control/retire")"
+check_equal 'a retired band is no longer listed, and an unknown band is a 404' '1/404' "$(stb GET "$po/band/retrieve?currency=BRL" | count)/$(st PUT "$po/band/$(uuid)/control/retire")"
 check_equal 'it cannot be sent again (409) and no longer updated (409)' '409/409' "$(st PUT "$po/$order/control/submit")/$(st PUT "$po/$order/update" "{\"vendorId\":\"$vendor\",\"expectedOn\":null,\"lines\":$(line_json PEN-BLUE 1)}")"
 refused=$(decide "$order" "$outsider" APPROVE)
 check_equal 'an approver who is not eligible is refused by the approval service (409 ERR-PRC-00409) and the order stays waiting' '409/ERR-PRC-00409/PENDING_APPROVAL' \

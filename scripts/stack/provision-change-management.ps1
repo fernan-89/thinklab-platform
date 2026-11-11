@@ -2,15 +2,18 @@
 .SYNOPSIS
   Provisions the CAB/ECAB and purchase-order approval policies against a running workflow-approval-service (PowerShell counterpart of provision-change-management.sh).
 .DESCRIPTION
-  it-change-management reads thinklab.change-management.cab-policy-id/ecab-policy-id and it-procurement reads THINKLAB_PO_POLICY_ID at JVM boot, so under docker compose
-  this takes two phases: start the stack, run this script, then recreate only those two containers so they see the ids:
+  it-change-management reads thinklab.change-management.cab-policy-id/ecab-policy-id at JVM boot, so under docker compose this takes two phases: start the stack,
+  run this script, then recreate only that container so it sees the ids:
 
     . scripts\stack\provision-change-management.ps1
-    docker compose up -d it-change-management it-procurement
+    docker compose up -d it-change-management
 
-  Dot-source it (or call it with & in the same session) so the three variables stay set in your session; run in a child process they are only printed.
+  it-procurement needs no restart: the approval policy of an order is that of its approval band (procurement ADR-036), and the smokes make a band at 0 for their own
+  tenant with the purchase-order policy written here.
+
+  Dot-source it (or call it with & in the same session) so the two variables stay set in your session; run in a child process they are only printed.
   Writes .e2e\change-management-policies.json and .e2e\procurement-policy.json (the files change-management-smoke, procurement-smoke and promises-alerting-smoke read)
-  and prints THINKLAB_CAB_POLICY_ID, THINKLAB_ECAB_POLICY_ID and THINKLAB_PO_POLICY_ID. Works in Windows PowerShell 5.1 and in PowerShell 7.
+  and prints THINKLAB_CAB_POLICY_ID and THINKLAB_ECAB_POLICY_ID. Works in Windows PowerShell 5.1 and in PowerShell 7.
 #>
 param([string]$WorkflowApprovalUrl = 'http://localhost:8090')
 
@@ -45,9 +48,7 @@ $utf8 = New-Object System.Text.UTF8Encoding($false)
 
 $env:THINKLAB_CAB_POLICY_ID = $cabId
 $env:THINKLAB_ECAB_POLICY_ID = $ecabId
-$env:THINKLAB_PO_POLICY_ID = $poId
 
 [Console]::Error.WriteLine("CAB policy [$cabId] ECAB policy [$ecabId] purchase-order policy [$poId]")
 Write-Output "THINKLAB_CAB_POLICY_ID=$cabId"
 Write-Output "THINKLAB_ECAB_POLICY_ID=$ecabId"
-Write-Output "THINKLAB_PO_POLICY_ID=$poId"

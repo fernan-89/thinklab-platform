@@ -195,6 +195,9 @@ check_equal 'a terminated resource opens nothing, however long ago it was seen' 
 # back in the store (docker exec, as for section 9); the approval goes through the REAL approval service with the purchase-order policy.
 [[ -f "$policy_file" ]] || { echo "Missing $policy_file - run provision-change-management.sh first." >&2; exit 1; }
 approver=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['approverIds'][0])" "$policy_file")
+# The approval policy of an order is that of its approval band (procurement ADR-036): this tenant needs a band at 0 before an order can be sent for approval.
+policy_id=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['policyId'])" "$policy_file")
+st POST "$po/band/initiate" "{\"currency\":\"BRL\",\"fromAmount\":0,\"policyId\":\"$policy_id\"}" > /dev/null
 order_body() { printf '{"reference":"%s","vendorId":"%s","requesterId":"%s","currency":"BRL","expectedOn":"%s","lines":[{"category":"HARDWARE","item":"LAP-14","quantity":10,"unitPrice":1500.00}]}' "$1" "$(uuid)" "$filed_for" "$(python3 -c "import datetime; print((datetime.date.today() + datetime.timedelta(days=5)).isoformat())")"; }
 placed_order() {
   local id; id=$(stb POST "$po/initiate" "$(order_body "$1")" | json "['id']")
