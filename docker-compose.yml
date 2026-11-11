@@ -20,6 +20,13 @@ x-healthcheck: &healthcheck
   retries: 6
   start_period: 90s
 
+# The test doubles (node:22-alpine) have a busybox wget of their own, so they need no tools volume. They start in about a second; only the URL differs.
+x-mock-healthcheck: &mock-healthcheck
+  interval: 5s
+  timeout: 5s
+  retries: 6
+  start_period: 15s
+
 x-service: &service
   restart: unless-stopped
   healthcheck: *healthcheck
@@ -359,6 +366,9 @@ services:
     profiles: ["ticketing-test"]
     image: node:22-alpine
     command: ["node", "/app/mock-ticketing.mjs"]
+    healthcheck:
+      <<: *mock-healthcheck
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:9100/__mock/state"]
     ports: ["9190:9100"]
     environment:
       MOCK_TICKETING_JIRA_AUTH: ${THINKLAB_MOCK_JIRA_AUTH:-Basic bW9jay1qaXJhOm1vY2s=}
@@ -522,6 +532,9 @@ services:
     profiles: ["health-test"]
     image: node:22-alpine
     command: ["node", "/app/mock-target.mjs"]
+    healthcheck:
+      <<: *mock-healthcheck
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:9200/__mock/state"]
     ports: ["9290:9200", "9291:9201"]
     volumes:
       - ./scripts/e2e/mock-target.mjs:/app/mock-target.mjs:ro
@@ -548,6 +561,9 @@ services:
     profiles: ["sso-test"]
     image: node:22-alpine
     command: ["node", "/app/mock-oidc-provider.mjs"]
+    healthcheck:
+      <<: *mock-healthcheck
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:9000/jwks"]
     ports: ["9000:9000"]
     environment:
       MOCK_OIDC_ISSUER: http://mock-oidc:9000
