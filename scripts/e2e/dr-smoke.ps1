@@ -185,11 +185,14 @@ $deleted = (Invoke-Api DELETE "$dr/$plan" $staff).Status
 Assert-Equal 'there is no delete (404 or 405)' ($deleted -in 404, 405) $true
 
 # 12. The ledger.
-$recorded = 0
-for ($i = 0; $i -lt 20; $i++) {
+# The gateway writes to the ledger asynchronously, one entry at a time, in order: the refused calls made last (status=403) land last, so wait for one
+# of them as well as for the count, or the check below runs before it is there.
+$recorded = 0; $refused = $false
+for ($i = 0; $i -lt 30; $i++) {
     $entries = @((Invoke-Api GET "$ledger/retrieve?limit=500" @{ 'X-Tenant-Id' = $tenantId }).Body)
     $recorded = @($entries | Where-Object { $_.resourceType -eq 'it-dr-registry' }).Count
-    if ($recorded -ge 30) { break }
+    $refused = @($entries | Where-Object { $_.resourceType -eq 'it-dr-registry' -and $_.detail -eq 'status=403' }).Count -ge 1
+    if ($recorded -ge 30 -and $refused) { break }
     Start-Sleep -Milliseconds 500
 }
 Assert-Equal 'the gateway recorded the mutations on the ledger (many, refused ones included)' ($recorded -ge 30) $true
