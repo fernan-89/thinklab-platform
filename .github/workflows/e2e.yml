@@ -136,6 +136,11 @@ jobs:
         timeout-minutes: 4
         run: thinklab-platform/scripts/stack/wait-ready.sh 120
 
+      # Docker's own verdict, not only a port that answers: every Java service, the gateways and the test doubles have a healthcheck (docker-compose.yml) and must report healthy.
+      - name: Every container reports healthy
+        timeout-minutes: 4
+        run: timeout -k 10 200 bash thinklab-platform/scripts/stack/assert-healthy.sh 150
+
       - name: Install newman
         timeout-minutes: 5
         run: npm install -g newman
