@@ -1,0 +1,54 @@
+name: runner-diagnostics
+
+# What a hosted runner is, in a few minutes and with a job log that survives: the e2e job has hung four times in a row, and when a run is cancelled
+# GitHub drops its log, so the cause could not be read. This one always finishes. It prints the kernel, the memory, the disk and the Docker version of each
+# runner image, then starts MongoDB 8.0 and 7.0 alone for a few seconds and prints what each one says.
+# Run it by hand (Actions > runner-diagnostics > Run workflow); it also runs on a pull request that changes this file.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['.github/workflows/runner-diagnostics.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 8
+    steps:
+      - name: The machine
+        timeout-minutes: 1
+        run: |
+          echo "runner image: ${{ matrix.runner }}"
+          uname -r
+          grep -E '^(PRETTY_NAME)=' /etc/os-release
+          echo "cpus: $(nproc)"
+          free -m
+          df -h / /var/lib/docker 2>/dev/null || df -h /
+      - name: Docker
+        timeout-minutes: 1
+        run: |
+          timeout -k 5 30 docker version --format 'client {{.Client.Version}}, server {{.Server.Version}}' || true
+          timeout -k 5 30 docker info --format 'kernel {{.KernelVersion}}, memory {{.MemTotal}} bytes, containers {{.Containers}}, images {{.Images}}' || true
+          timeout -k 5 30 docker system df || true
+      - name: MongoDB 8.0 alone
+        timeout-minutes: 3
+        run: |
+          timeout -k 5 120 docker run -d --name mongo-80 mongo:8.0 mongod --replSet rs0 --bind_ip_all || true
+          sleep 15
+          docker ps -a --filter name=mongo-80 --format '{{.Names}}: {{.Status}}' || true
+          docker logs --tail 5 mongo-80 2>&1 | cut -c1-300 || true
+          docker rm -f mongo-80 >/dev/null 2>&1 || true
+      - name: MongoDB 7.0 alone
+        timeout-minutes: 3
+        run: |
+          timeout -k 5 120 docker run -d --name mongo-70 mongo:7.0 mongod --replSet rs0 --bind_ip_all || true
+          sleep 15
+          docker ps -a --filter name=mongo-70 --format '{{.Names}}: {{.Status}}' || true
+          docker logs --tail 5 mongo-70 2>&1 | cut -c1-300 || true
+          docker rm -f mongo-70 >/dev/null 2>&1 || true
