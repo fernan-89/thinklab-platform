@@ -34,8 +34,10 @@ fail() {
   exit 1
 }
 
-# 1. Infrastructure: started on its own and waited for through its healthchecks.
-stamp "start: infrastructure"
+# 1. Infrastructure: started on its own and waited for through its healthchecks. First the tools one-shot, which fills the volume that the healthcheck of every
+# Java service runs from (the images are distroless: no curl); it exits by itself.
+stamp "start: tools and infrastructure"
+timeout -k 10 120 docker compose run --rm --no-deps tools || fail "the tools one-shot (busybox for the healthchecks) did not finish"
 timeout -k 10 200 docker compose up -d --wait --wait-timeout 150 mongo nats anchor-store || fail "infrastructure (mongo, nats, anchor-store) did not become healthy"
 stamp "infrastructure healthy"
 

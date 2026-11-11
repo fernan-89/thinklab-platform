@@ -75,3 +75,20 @@ jobs:
           docker network rm probe-net >/dev/null 2>&1 || true
           docker volume rm tools >/dev/null 2>&1 || true
           if [ "$got_200" -eq 0 ] && [ "$got_404" -ne 0 ] && [ "$got_none" -ne 0 ]; then echo "TECHNIQUE OK: 200 gives 0, 404 and no server give non-zero"; else echo "TECHNIQUE DID NOT BEHAVE AS EXPECTED (200=$got_200, 404=$got_404, none=$got_none)"; exit 1; fi
+      - uses: actions/checkout@v7
+        timeout-minutes: 2
+      - name: Compose healthchecks of the test doubles (real containers, from docker-compose.yml)
+        timeout-minutes: 4
+        run: |
+          # The three mocks need only node:22-alpine and files of this repository, so their healthchecks (the x-mock-healthcheck anchor and a wget URL each)
+          # can be proved here on real Docker. `up --wait` fails if one does not become healthy.
+          profiles="--profile sso-test --profile ticketing-test --profile health-test"
+          rc=0
+          timeout -k 10 200 docker compose $profiles up -d --wait --wait-timeout 90 mock-target mock-ticketing mock-oidc || rc=$?
+          echo "up --wait exit: $rc"
+          for service in mock-target mock-ticketing mock-oidc; do
+            echo "$service: $(docker inspect --format '{{.State.Health.Status}}' "thinklab-$service-1" 2>&1)"
+          done
+          docker compose $profiles down -v --timeout 5 >/dev/null 2>&1 || true
+          if [ "$rc" -ne 0 ]; then echo "A TEST DOUBLE DID NOT BECOME HEALTHY"; exit 1; fi
+          echo "ALL THREE TEST DOUBLES ARE HEALTHY"

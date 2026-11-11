@@ -9,8 +9,30 @@
 # Host ports follow the platform port map; inside the network every service listens on 8080.
 name: thinklab
 
+# The Docker healthcheck of every Java service. The images are distroless (no shell, no curl, no wget), so the check runs a static busybox that the `tools`
+# service copies into a volume mounted read-only in each of them. It asks for /health/readiness (up, and connected to what the service needs), the endpoint
+# whose answer says "send me traffic". /health/liveness ("the process is alive") answers on the same port; `wait-ready.sh` checks both for every service.
+# Failures during start_period do not count, so a service that starts before the volume is filled is not marked unhealthy by that.
+x-healthcheck: &healthcheck
+  test: ["CMD", "/tools/busybox", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:8080/health/readiness"]
+  interval: 10s
+  timeout: 5s
+  retries: 6
+  start_period: 90s
+
+# The test doubles (node:22-alpine) and the web app (nginx:alpine) have a busybox wget of their own, so they need no tools volume. They start in about a second;
+# only the URL differs.
+x-alpine-healthcheck: &alpine-healthcheck
+  interval: 5s
+  timeout: 5s
+  retries: 6
+  start_period: 15s
+
 x-service: &service
   restart: unless-stopped
+  healthcheck: *healthcheck
+  volumes:
+    - tools:/tools:ro
   depends_on:
     mongo:
       condition: service_healthy
@@ -25,6 +47,15 @@ x-service: &service
     THINKLAB_TOKEN_URL: http://party-authentication:8080/party-authentication/v1/token/service
 
 services:
+  # One-shot: copies a static busybox into the `tools` volume and exits 0. Every Java service mounts that volume to run its healthcheck (x-healthcheck above).
+  # Start it before the services (scripts/stack/start-staged.sh and edition.sh do): `docker compose run --rm --no-deps tools`.
+  tools:
+    image: busybox:1.37.0-musl
+    command: ["cp", "/bin/busybox", "/tools/busybox"]
+    restart: "no"
+    volumes:
+      - tools:/tools
+
   # A replica set, even with a single node, is what enables multi-document transactions; without it the
   # kit's transactional outbox (party-authentication user creation) fails. The healthcheck initiates the
   # set on first start and only reports healthy once this node is the writable primary.
@@ -336,6 +367,9 @@ services:
     profiles: ["ticketing-test"]
     image: node:22-alpine
     command: ["node", "/app/mock-ticketing.mjs"]
+    healthcheck:
+      <<: *alpine-healthcheck
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:9100/__mock/state"]
     ports: ["9190:9100"]
     environment:
       MOCK_TICKETING_JIRA_AUTH: ${THINKLAB_MOCK_JIRA_AUTH:-Basic bW9jay1qaXJhOm1vY2s=}
@@ -499,6 +533,9 @@ services:
     profiles: ["health-test"]
     image: node:22-alpine
     command: ["node", "/app/mock-target.mjs"]
+    healthcheck:
+      <<: *alpine-healthcheck
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:9200/__mock/state"]
     ports: ["9290:9200", "9291:9201"]
     volumes:
       - ./scripts/e2e/mock-target.mjs:/app/mock-target.mjs:ro
@@ -525,6 +562,9 @@ services:
     profiles: ["sso-test"]
     image: node:22-alpine
     command: ["node", "/app/mock-oidc-provider.mjs"]
+    healthcheck:
+      <<: *alpine-healthcheck
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1:9000/jwks"]
     ports: ["9000:9000"]
     environment:
       MOCK_OIDC_ISSUER: http://mock-oidc:9000
@@ -538,6 +578,9 @@ services:
     image: thinklab/platform-gateway:local
     restart: unless-stopped
     ports: ["8088:8080"]
+    healthcheck: *healthcheck
+    volumes:
+      - tools:/tools:ro
     environment: &gateway-env
       # Not capped by default (it is the one JVM that was never capped); scripts/stack/homelab.sh sets THINKLAB_GATEWAY_JAVA_OPTS.
       JAVA_TOOL_OPTIONS: ${THINKLAB_GATEWAY_JAVA_OPTS:-}
@@ -622,8 +665,12 @@ services:
     image: thinklab/web:local
     restart: unless-stopped
     ports: ["3000:80"]
+    healthcheck:
+      <<: *alpine-healthcheck
+      test: ["CMD", "wget", "-q", "-O", "/dev/null", "-T", "3", "http://127.0.0.1/healthz"]
     depends_on: [gateway]
 
 volumes:
   mongo-data:
   nats-data:
+  tools:
