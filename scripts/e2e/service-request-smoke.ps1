@@ -215,11 +215,14 @@ Assert-Equal 'a RETIRED item can no longer be requested (409)' (New-Request $lap
 Assert-Equal 'a request made before stays as it was (snapshot intact)' "$((Get-Request $id).status)/$((Get-Request $id).catalogItemName)" 'CLOSED/New laptop (standard)'
 Assert-Equal 'a delete is not a thing (404 or 405)' (@(404, 405) -contains (Invoke-Api DELETE "$srq/$id" $staff).Status) $true
 $ledger = "$LedgerUrl/compliance-audit-ledger/v1"
-$recorded = 0
-for ($i = 0; $i -lt 20; $i++) {
+# The gateway writes to the ledger asynchronously, one entry at a time, in order: the refused calls made last (status=403) land last, so wait for one
+# of them as well as for the count, or the check below runs before it is there.
+$recorded = 0; $refused = $false
+for ($i = 0; $i -lt 30; $i++) {
     $entries = @((Invoke-Api GET "$ledger/retrieve?limit=500" @{ 'X-Tenant-Id' = $tenantId }).Body | Where-Object { $_.resourceType -eq 'it-service-request' })
     $recorded = $entries.Count
-    if ($recorded -ge 40) { break }
+    $refused = @($entries | Where-Object { $_.detail -eq 'status=403' }).Count -ge 1
+    if ($recorded -ge 40 -and $refused) { break }
     Start-Sleep -Milliseconds 500
 }
 Assert-Equal 'the gateway recorded the mutations on the ledger (many, refused ones included)' ($recorded -ge 40) $true
