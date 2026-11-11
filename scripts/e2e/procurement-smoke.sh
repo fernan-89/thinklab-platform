@@ -106,7 +106,7 @@ check_equal 'it is sent for approval (204): PENDING_APPROVAL, with the approval 
 check_equal 'the audit entry of the submission names the band the total (30.00) fell in: the one from 0, not the one from 10000.00' 'True/False' "$(band_in_trail "$order" "$band_low")/$(band_in_trail "$order" "$band_high")"
 big=$(stb POST "$po/initiate" "$(order_json PO-BIG)" | json "['id']")
 check_equal 'an order of 15100.00 is sent for approval under the band from 10000.00 (204), and its audit entry says so' '204/True/False' "$(st PUT "$po/$big/control/submit")/$(band_in_trail "$big" "$band_high")/$(band_in_trail "$big" "$band_low")"
-check_equal 'the order that was sent can be cancelled (204), and the band from 10000.00 is retired once (204) and not twice (409)' '204/204/409' "$(st PUT "$po/$big/control/cancel")/$(st PUT "$po/$band_high/control/retire")/$(st PUT "$po/$band_high/control/retire")"
+check_equal 'the order that was sent can be cancelled (204), and the band from 10000.00 is retired once (204) and not twice (409)' '204/204/409' "$(st PUT "$po/$big/control/cancel")/$(st PUT "$po/band/$band_high/control/retire")/$(st PUT "$po/band/$band_high/control/retire")"
 check_equal 'a retired band is no longer listed, and an unknown band is a 404' '1/404' "$(stb GET "$po/band/retrieve?currency=BRL" | count)/$(st PUT "$po/band/$(uuid)/control/retire")"
 check_equal 'it cannot be sent again (409) and no longer updated (409)' '409/409' "$(st PUT "$po/$order/control/submit")/$(st PUT "$po/$order/update" "{\"vendorId\":\"$vendor\",\"expectedOn\":null,\"lines\":$(line_json PEN-BLUE 1)}")"
 refused=$(decide "$order" "$outsider" APPROVE)
