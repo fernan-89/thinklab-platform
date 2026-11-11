@@ -234,6 +234,9 @@ check_equal 'the third check goes DOWN' DOWN "$(run_check "$cache")"
 evaluate > /dev/null
 has_cache_alerts() { [[ "$(alert_count "?checkId=$cache")" -ge "$1" ]]; }
 check_equal 'an alert is opened for it' True "$(truth wait_for 20 has_cache_alerts 1)"
+# The alert is saved before its incident, so that an outage is never lost when the incident service is down, and linked to it a moment later: wait for the link.
+has_cache_incident() { local v; v=$(cache_field "['incidentId']" 2>/dev/null); [[ -n "$v" && "$v" != None ]]; }
+wait_for 20 has_cache_incident || true
 cache_alert=$(cache_field "['id']")
 cache_incident=$(cache_field "['incidentId']")
 check_equal 'it has its incident: the fourth, one per outage' 'True/4' "$(truth test -n "$cache_incident")/$(incident_count)"
