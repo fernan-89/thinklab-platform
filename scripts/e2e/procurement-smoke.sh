@@ -168,11 +168,13 @@ delete_status=$(st DELETE "$po/$order")
 check_equal 'there is no delete (404 or 405)' True "$([[ "$delete_status" == 404 || "$delete_status" == 405 ]] && echo True || echo False)"
 
 # 9. The ledger.
-recorded=0
-for _ in $(seq 1 20); do
+# The gateway writes to the ledger asynchronously, one entry at a time, in order: the refused calls made last (the REQUESTER ones, status=403) land last, so
+# wait for one of them as well as for the count, or the check below runs before it is there (run 43031832284).
+recorded=0; refused=False
+for _ in $(seq 1 30); do
   entries=$(api_body "$(api GET "$ledger_api/retrieve?limit=500" "" "$tenant")")
-  recorded=$(python3 -c "import json,sys; print(sum(1 for e in json.load(sys.stdin) if e['resourceType']=='it-procurement'))" <<<"$entries")
-  [[ "$recorded" -ge 30 ]] && break
+  read -r recorded refused < <(python3 -c "import json,sys; rows=[e for e in json.load(sys.stdin) if e['resourceType']=='it-procurement']; print(len(rows), any(e['detail']=='status=403' for e in rows))" <<<"$entries")
+  [[ "$recorded" -ge 30 && "$refused" == True ]] && break
   sleep 0.5
 done
 check_equal 'the gateway recorded the mutations on the ledger (many, refused ones included)' True "$([[ "$recorded" -ge 30 ]] && echo True || echo False)"

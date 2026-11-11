@@ -1,0 +1,77 @@
+name: runner-diagnostics
+
+# What a hosted runner is, in a few minutes and with a job log that survives: the e2e job has hung four times in a row, and when a run is cancelled
+# GitHub drops its log, so the cause could not be read. This one always finishes. It prints the kernel, the memory, the disk and the Docker version of each
+# runner image, then starts MongoDB 8.0 and 7.0 alone for a few seconds and prints what each one says.
+# Run it by hand (Actions > runner-diagnostics > Run workflow); it also runs on a pull request that changes this file.
+on:
+  workflow_dispatch:
+  pull_request:
+    paths: ['.github/workflows/runner-diagnostics.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  diagnose:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-22.04, ubuntu-24.04]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 8
+    steps:
+      - name: The machine
+        timeout-minutes: 1
+        run: |
+          echo "runner image: ${{ matrix.runner }}"
+          uname -r
+          grep -E '^(PRETTY_NAME)=' /etc/os-release
+          echo "cpus: $(nproc)"
+          free -m
+          df -h / /var/lib/docker 2>/dev/null || df -h /
+          echo "TCP ports already listening before anything starts (the platform publishes 8080-8114, 8188, 9000, 9190, 9290, 9291):"
+          sudo ss -ltnp 2>/dev/null | awk 'NR==1 || /:(80[0-9][0-9]|81[0-9][0-9]|9[0-9][0-9][0-9])[[:space:]]/' | cut -c1-170
+      - name: Docker
+        timeout-minutes: 1
+        run: |
+          timeout -k 5 30 docker version --format 'client {{.Client.Version}}, server {{.Server.Version}}' || true
+          timeout -k 5 30 docker info --format 'kernel {{.KernelVersion}}, memory {{.MemTotal}} bytes, containers {{.Containers}}, images {{.Images}}' || true
+          timeout -k 5 30 docker system df || true
+      - name: MongoDB 8.0 alone
+        timeout-minutes: 3
+        run: |
+          timeout -k 5 120 docker run -d --name mongo-80 mongo:8.0 mongod --replSet rs0 --bind_ip_all || true
+          sleep 15
+          docker ps -a --filter name=mongo-80 --format '{{.Names}}: {{.Status}}' || true
+          docker logs --tail 5 mongo-80 2>&1 | cut -c1-300 || true
+          docker rm -f mongo-80 >/dev/null 2>&1 || true
+      - name: MongoDB 7.0 alone
+        timeout-minutes: 3
+        run: |
+          timeout -k 5 120 docker run -d --name mongo-70 mongo:7.0 mongod --replSet rs0 --bind_ip_all || true
+          sleep 15
+          docker ps -a --filter name=mongo-70 --format '{{.Names}}: {{.Status}}' || true
+          docker logs --tail 5 mongo-70 2>&1 | cut -c1-300 || true
+          docker rm -f mongo-70 >/dev/null 2>&1 || true
+      - name: Healthcheck without a shell (busybox from a volume, run inside a distroless image)
+        timeout-minutes: 4
+        run: |
+          # The service images are distroless: no shell, no curl, no wget. A static busybox copied to a volume can be mounted into them and used as the
+          # healthcheck command. This proves it on real Docker: exit 0 for a 200, non-zero for a 404 and for no server, running as the image's nonroot user.
+          docker volume create tools >/dev/null
+          timeout -k 5 120 docker run --rm -v tools:/tools busybox:1.37.0-musl cp /bin/busybox /tools/busybox || echo "COULD NOT COPY BUSYBOX"
+          docker network create probe-net >/dev/null
+          timeout -k 5 120 docker run -d --name probe-web --network probe-net nginx:1.27-alpine >/dev/null || echo "COULD NOT START NGINX"
+          sleep 4
+          image=gcr.io/distroless/java21-debian12:nonroot
+          # GitHub runs this with `bash -e`: a probe that fails (which is what a 404 must do) would end the step before the code is printed, so the code is captured.
+          probe() { rc=0; timeout -k 5 90 docker run --rm --network probe-net -v tools:/tools:ro --entrypoint /tools/busybox "$image" wget -q -O /dev/null -T 3 "$1" || rc=$?; echo "  exit=$rc"; }
+          echo "who runs it:"; timeout -k 5 90 docker run --rm -v tools:/tools:ro --entrypoint /tools/busybox "$image" id
+          echo "GET / on a running server (expect exit=0):"; probe http://probe-web/; got_200=$rc
+          echo "GET /nope, a 404 (expect non-zero):"; probe http://probe-web/nope; got_404=$rc
+          echo "no server at all (expect non-zero):"; probe http://127.0.0.1:9/; got_none=$rc
+          docker rm -f probe-web >/dev/null 2>&1 || true
+          docker network rm probe-net >/dev/null 2>&1 || true
+          docker volume rm tools >/dev/null 2>&1 || true
+          if [ "$got_200" -eq 0 ] && [ "$got_404" -ne 0 ] && [ "$got_none" -ne 0 ]; then echo "TECHNIQUE OK: 200 gives 0, 404 and no server give non-zero"; else echo "TECHNIQUE DID NOT BEHAVE AS EXPECTED (200=$got_200, 404=$got_404, none=$got_none)"; exit 1; fi
