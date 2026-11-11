@@ -30,6 +30,8 @@ jobs:
           echo "cpus: $(nproc)"
           free -m
           df -h / /var/lib/docker 2>/dev/null || df -h /
+          echo "TCP ports already listening before anything starts (the platform publishes 8080-8114, 8188, 9000, 9190, 9290, 9291):"
+          sudo ss -ltnp 2>/dev/null | awk 'NR==1 || /:(80[0-9][0-9]|81[0-9][0-9]|9[0-9][0-9][0-9])[[:space:]]/' | cut -c1-170
       - name: Docker
         timeout-minutes: 1
         run: |
