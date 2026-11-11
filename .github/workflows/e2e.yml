@@ -67,6 +67,9 @@ jobs:
       - name: Build the images
         working-directory: thinklab-platform
         timeout-minutes: 15
+        # Same limit as the start below: building about forty images at once made BuildKit drop the connection (run 43029998968: "failed to receive status: rpc error: code = Unavailable ... EOF").
+        env:
+          COMPOSE_PARALLEL_LIMIT: "4"
         run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating build
 
       # The ubuntu-22.04 image runs a mono service that listens on 0.0.0.0:8084, the port the platform publishes for it-operation-window: the first group of
