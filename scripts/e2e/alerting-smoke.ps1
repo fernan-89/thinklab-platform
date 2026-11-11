@@ -122,6 +122,8 @@ try {
     Assert-Equal 'the monitor sees the check DOWN' (Run-Check $web).health 'DOWN'
     [void](Evaluate)
     Assert-Equal 'an alert is opened for it (by an evaluation or by the scheduler)' (Wait-Until { @(Alerts).Count -ge 1 } 20) $true
+    # The incident is filed right after the alert is saved, so wait for it before reading it.
+    [void](Wait-Until { [bool]((Alerts)[0].incidentId) } 20)
     $first = (Alerts)[0]
     Assert-Equal 'it is OPEN, names the check and the fixed error, and has its incident' "$($first.status)/$($first.checkName)/$($first.lastError)/$([bool]$first.incidentId)" 'OPEN/Intranet/unexpected status/True'
     $incident = Get-Incident $first.incidentId
@@ -149,6 +151,7 @@ try {
     Assert-Equal 'four evaluations at once: every one is answered 200' (@($codes | Where-Object { $_ -ne 200 }).Count) 0
     Start-Sleep -Seconds 6
     Assert-Equal 'and they opened exactly ONE alert and ONE incident for the second outage' "$(@(Alerts "?checkId=$db").Count)/$(@(Alerts).Count)/$(@(Incidents).Count)" '1/2/2'
+    [void](Wait-Until { [bool]((Alerts "?checkId=$db")[0].incidentId) } 20)
     $dbAlert = (Alerts "?checkId=$db")[0]
     Assert-Equal 'it has its incident too' ([bool]$dbAlert.incidentId) $true
 
@@ -176,6 +179,7 @@ try {
     Assert-Equal 'the check goes DOWN again' (Run-Check $web).health 'DOWN'
     [void](Evaluate)
     Assert-Equal 'a NEW alert is opened: the first one is history' (Wait-Until { @(Alerts "?checkId=$web").Count -ge 2 } 20) $true
+    [void](Wait-Until { [bool]((Alerts "?checkId=$web")[0].incidentId) } 20)
     $second = (Alerts "?checkId=$web")[0]
     Assert-Equal 'the newest first: OPEN, a different alert, with an incident' "$($second.status)/$($second.id -ne $first.id)/$([bool]$second.incidentId)" 'OPEN/True/True'
     $incident2 = Get-Incident $second.incidentId

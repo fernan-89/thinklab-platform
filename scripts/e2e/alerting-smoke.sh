@@ -74,6 +74,7 @@ trail() { stb GET "$1/audit-log/retrieve" | python3 -c "import json,sys; print('
 both_up() { [[ "$(check_health "$web")" == UP && "$(check_health "$db")" == UP ]]; }
 has_alerts() { [[ "$(alert_count '')" -ge "$1" ]]; }
 has_web_alerts() { [[ "$(alert_count "?checkId=$web")" -ge "$1" ]]; }
+has_incident() { local v; v=$(alerts "$1" | json "[0]['incidentId']" 2>/dev/null); [[ -n "$v" && "$v" != None ]]; }
 web_resolved() { [[ "$(newest_field "$web" "['status']")" == RESOLVED ]]; }
 db_resolved() { [[ "$(newest_field "$db" "['status']")" == RESOLVED ]]; }
 
@@ -101,6 +102,8 @@ target /__mock/status '{"status":503}'
 check_equal 'the monitor sees the check DOWN' DOWN "$(run_check "$web")"
 evaluate > /dev/null
 check_equal 'an alert is opened for it (by an evaluation or by the scheduler)' True "$(truth wait_for 20 has_alerts 1)"
+# The incident is filed right after the alert is saved, so wait for it before reading it.
+wait_for 20 has_incident '' || true
 first_id=$(alerts '' | json "[0]['id']")
 first_incident=$(alerts '' | json "[0]['incidentId']")
 check_equal 'it is OPEN, names the check and the fixed error, and has its incident' 'OPEN/Intranet/unexpected status/True' \
@@ -128,6 +131,8 @@ for i in 1 2 3 4; do [[ "$(cat "$tmp/e$i")" == 200 ]] || others=$((others + 1));
 check_equal 'four evaluations at once: every one is answered 200' 0 "$others"
 sleep 6
 check_equal 'and they opened exactly ONE alert and ONE incident for the second outage' '1/2/2' "$(alert_count "?checkId=$db")/$(alert_count '')/$(incident_count)"
+# The incident is filed right after the alert is saved, so wait for it before reading it.
+wait_for 20 has_incident "?checkId=$db" || true
 check_equal 'it has its incident too' True "$(alerts "?checkId=$db" | python3 -c "import json,sys; print(bool(json.load(sys.stdin)[0].get('incidentId')))")"
 
 # 4. Recovery: resolved, an INTERNAL note, the incident is not closed.
@@ -153,6 +158,8 @@ target /__mock/status '{"status":503}'
 check_equal 'the check goes DOWN again' DOWN "$(run_check "$web")"
 evaluate > /dev/null
 check_equal 'a NEW alert is opened: the first one is history' True "$(truth wait_for 20 has_web_alerts 2)"
+# The incident is filed right after the alert is saved, so wait for it before reading it.
+wait_for 20 has_incident "?checkId=$web" || true
 second_incident=$(newest_field "$web" "['incidentId']")
 check_equal 'the newest first: OPEN, a different alert, with an incident' 'OPEN/True/True' \
   "$(alerts "?checkId=$web" | python3 -c "import json,sys; d=json.load(sys.stdin)[0]; print('%s/%s/%s' % (d['status'], d['id'] != '$first_id', bool(d.get('incidentId'))))")"
