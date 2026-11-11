@@ -69,6 +69,26 @@ jobs:
         timeout-minutes: 15
         run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating build
 
+      # The ubuntu-22.04 image runs a mono service that listens on 0.0.0.0:8084, the port the platform publishes for it-operation-window: the first group of
+      # services failed with "failed to bind host port for 0.0.0.0:8084 ... address already in use" (run 43026570593; runner-diagnostics lists it on a fresh runner).
+      # Stop it when it is mono; fail here, naming the process, if the port is still taken, instead of in the middle of the stack.
+      - name: Free port 8084 on the runner
+        timeout-minutes: 2
+        run: |
+          holders=$(sudo ss -ltnpH 'sport = :8084' | cut -c1-200)
+          if [ -z "$holders" ]; then echo "port 8084 is free"; exit 0; fi
+          echo "port 8084 is held by: $holders"
+          for pid in $(echo "$holders" | grep -o 'pid=[0-9]*' | cut -d= -f2 | sort -u); do
+            name=$(ps -p "$pid" -o comm= 2>/dev/null || true)
+            echo "pid $pid is '$name': $(ps -p "$pid" -o args= 2>/dev/null | cut -c1-160)"
+            if [ "$name" = "mono" ]; then echo "stopping it"; sudo kill "$pid" || true; fi
+          done
+          sleep 3
+          if sudo ss -ltnH 'sport = :8084' | grep -q .; then
+            echo "::error::port 8084 is still in use: $(sudo ss -ltnpH 'sport = :8084' | cut -c1-200)"
+            exit 1
+          fi
+          echo "port 8084 is free now"
       - name: Start the stack
         working-directory: thinklab-platform
         timeout-minutes: 15
