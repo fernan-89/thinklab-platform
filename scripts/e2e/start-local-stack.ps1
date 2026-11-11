@@ -174,7 +174,6 @@ foreach ($s in $Services) {
         $poPolicy = Invoke-RestMethod -Method Post -Uri 'http://localhost:8090/workflow-approval/v1/policy/initiate' `
             -Headers @{ 'X-Tenant-Id' = $poTenant } -ContentType 'application/json' `
             -Body (@{ name = 'PURCHASE-ORDER'; requiredApprovals = 1; eligibleApproverIds = $poApprovers } | ConvertTo-Json)
-        $env:THINKLAB_PO_POLICY_ID = $poPolicy.id
         [pscustomobject]@{ tenantId = $poTenant; policyId = $poPolicy.id; approverIds = $poApprovers } | ConvertTo-Json | Set-Content "$RunDir\procurement-policy.json"
         Write-Host "  purchase-order policy [$($poPolicy.id)]"
     }

@@ -205,6 +205,9 @@ Assert-Equal 'a terminated resource opens nothing, however long ago it was seen'
 # back in the store (docker exec, as for section 9); the approval goes through the REAL approval service with the purchase-order policy.
 if (-not (Test-Path $PolicyFile)) { throw "Missing $PolicyFile - run start-local-stack.ps1 (or provision-change-management.sh) first." }
 $approver = @((Get-Content $PolicyFile -Raw | ConvertFrom-Json).approverIds)[0]
+# The approval policy of an order is that of its approval band (procurement ADR-036): this tenant needs a band at 0 before an order can be sent for approval.
+$bandPolicy = (Get-Content $PolicyFile -Raw | ConvertFrom-Json).policyId
+[void](Invoke-Api POST "$po/band/initiate" $staff "{`"currency`":`"BRL`",`"fromAmount`":0,`"policyId`":`"$bandPolicy`"}")
 function Order-Body2([string]$Reference) { @{ reference = $Reference; vendorId = [guid]::NewGuid().ToString(); requesterId = $filedFor; currency = 'BRL'; expectedOn = (Get-Date).AddDays(5).ToString('yyyy-MM-dd'); lines = @(@{ category = 'HARDWARE'; item = 'LAP-14'; quantity = 10; unitPrice = 1500.00 }) } }
 function Placed-Order([string]$Reference) {
     $id = (Invoke-Api POST "$po/initiate" $staff (Order-Body2 $Reference)).Body.id

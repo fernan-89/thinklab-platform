@@ -3,8 +3,9 @@
   Live proof of Journey 15, sixth service: purchase orders through the platform gateway, against the REAL approval service (procurement ADR-030..034).
 
 .DESCRIPTION
-  Needs the stack up with it-procurement started with THINKLAB_PO_POLICY_ID (start-local-stack.ps1 provisions the purchase-order ApprovalPolicy before starting
-  it and writes it to the run directory as procurement-policy.json; provision-change-management.sh writes .e2e/procurement-policy.json in the Docker stack).
+  Needs the stack up and the purchase-order ApprovalPolicy that start-local-stack.ps1 writes to the run directory as procurement-policy.json
+  (provision-change-management.sh writes .e2e/procurement-policy.json in the Docker stack). The smoke makes its own approval bands (procurement ADR-036) with that
+  policy: no band, no submission; the band of an order is the one with the greatest lower bound not above its total.
   Uses its own tenant id, then drives, through the GATEWAY:
     (1) a draft (the total, the lines in minor units), a duplicate reference (409), an update that replaces the lines;
     (2) approval on the REAL approval service: sent for approval, an approver who is not eligible refused (409), an eligible approver approves, a decision on an
@@ -90,12 +91,34 @@ $updated = Invoke-Api PUT "$po/$order/update" $staff "{`"vendorId`":`"$vendor`",
 Assert-Equal 'a draft is updated (204): the lines are replaced and the total follows' "$($updated.Status)/$(@((Get-Order $order).lines).Count)/$([double](Get-Order $order).total)" '204/1/30'
 Assert-Equal 'the list finds it by status and by vendor, and not by another status' "$(@((Invoke-Api GET "$po/retrieve?status=DRAFT&vendorId=$vendor" $staff).Body)[0].id)/$(Count "$po/retrieve?status=APPROVED")" "$order/0"
 
+# 1b. Approval bands (procurement ADR-036): no band, no submission; the band of an order is the active one with the greatest lower bound not above its total.
+$policyId = $policy.policyId
+$noBand = Invoke-Api PUT "$po/$order/control/submit" $staff
+Assert-Equal 'with no approval band an order cannot be sent for approval: 502 ERR-PRC-00502, and it stays a draft' "$($noBand.Status)/$($noBand.Body.error_code)/$((Get-Order $order).status)" '502/ERR-PRC-00502/DRAFT'
+function Band-Body([string]$Currency, $From) { "{`"currency`":`"$Currency`",`"fromAmount`":$From,`"policyId`":`"$policyId`"}" }
+$bandLowMade = Invoke-Api POST "$po/band/initiate" $staff (Band-Body 'BRL' '0')
+$bandHighMade = Invoke-Api POST "$po/band/initiate" $staff (Band-Body 'BRL' '10000.00')
+$bandLow = $bandLowMade.Body.id; $bandHigh = $bandHighMade.Body.id
+Assert-Equal 'two bands are made (201 each): ACTIVE, from 0 and from 10000.00 in BRL, with the policy' "$($bandLowMade.Status)/$($bandHighMade.Status)/$($bandLowMade.Body.status)/$([double]$bandLowMade.Body.fromAmount)/$([double]$bandHighMade.Body.fromAmount)/$($bandHighMade.Body.policyId -eq $policyId)" '201/201/ACTIVE/0/10000/True'
+Assert-Equal 'a second active band of the currency at the same amount is a conflict (409)' (Invoke-Api POST "$po/band/initiate" $staff (Band-Body 'BRL' '10000.00')).Status 409
+Assert-Equal 'the same amount in another currency is another band (201)' (Invoke-Api POST "$po/band/initiate" $staff (Band-Body 'USD' '10000.00')).Status 201
+$brlBands = @((Invoke-Api GET "$po/band/retrieve?currency=BRL" $staff).Body)
+Assert-Equal 'the BRL bands are read lowest first, and the currency filter leaves out USD' "$($brlBands.Count)/$([double]$brlBands[0].fromAmount)/$([double]$brlBands[1].fromAmount)/$(Count "$po/band/retrieve")" '2/0/10000/3'
+Assert-Equal 'a negative lower bound, one with three decimals and an unknown currency are refused (400 each)' "$((Invoke-Api POST "$po/band/initiate" $staff (Band-Body 'BRL' '-1')).Status)/$((Invoke-Api POST "$po/band/initiate" $staff (Band-Body 'BRL' '1.001')).Status)/$((Invoke-Api POST "$po/band/initiate" $staff (Band-Body 'GBP' '1')).Status)" '400/400/400'
+Assert-Equal 'a REQUESTER can neither make, read nor retire a band (403 each)' "$((Invoke-Api POST "$po/band/initiate" $asRequester (Band-Body 'BRL' '5')).Status)/$((Invoke-Api GET "$po/band/retrieve" $asRequester).Status)/$((Invoke-Api PUT "$po/band/$bandLow/control/retire" $asRequester).Status)" '403/403/403'
+function Band-In-Trail([string]$Id, [string]$Band) { @((Invoke-Api GET "$po/$Id/audit-log/retrieve" $staff).Body | Where-Object { $_.detail -like "*$Band*" }).Count -gt 0 }
+
 # 2. Approval through the REAL approval service.
 $emptyId = (Invoke-Api POST "$po/initiate" $staff (Order-Body 'PO-EMPTY' '[]')).Body.id
 Assert-Equal 'an order with no lines cannot be sent for approval (400)' (Invoke-Api PUT "$po/$emptyId/control/submit" $staff).Status 400
 $submitted = Invoke-Api PUT "$po/$order/control/submit" $staff
 $afterSubmit = Get-Order $order
 Assert-Equal 'it is sent for approval (204): PENDING_APPROVAL, with the approval request kept' "$($submitted.Status)/$($afterSubmit.status)/$([bool]$afterSubmit.approvalRequestId)" '204/PENDING_APPROVAL/True'
+Assert-Equal 'the audit entry of the submission names the band the total (30.00) fell in: the one from 0, not the one from 10000.00' "$(Band-In-Trail $order $bandLow)/$(Band-In-Trail $order $bandHigh)" 'True/False'
+$big = (Invoke-Api POST "$po/initiate" $staff (Order-Body 'PO-BIG')).Body.id
+Assert-Equal 'an order of 15100.00 is sent for approval under the band from 10000.00 (204), and its audit entry says so' "$((Invoke-Api PUT "$po/$big/control/submit" $staff).Status)/$(Band-In-Trail $big $bandHigh)/$(Band-In-Trail $big $bandLow)" '204/True/False'
+Assert-Equal 'the order that was sent can be cancelled (204), and the band from 10000.00 is retired once (204) and not twice (409)' "$((Invoke-Api PUT "$po/$big/control/cancel" $staff).Status)/$((Invoke-Api PUT "$po/band/$bandHigh/control/retire" $staff).Status)/$((Invoke-Api PUT "$po/band/$bandHigh/control/retire" $staff).Status)" '204/204/409'
+Assert-Equal 'a retired band is no longer listed, and an unknown band is a 404' "$(Count "$po/band/retrieve?currency=BRL")/$((Invoke-Api PUT "$po/band/$([guid]::NewGuid())/control/retire" $staff).Status)" '1/404'
 $updateBody = "{`"vendorId`":`"$vendor`",`"expectedOn`":null,`"lines`":$(Line-Body 'PEN-BLUE' 1)}"
 $sentAgain = (Invoke-Api PUT "$po/$order/control/submit" $staff).Status
 $updatedAgain = (Invoke-Api PUT "$po/$order/update" $staff $updateBody).Status

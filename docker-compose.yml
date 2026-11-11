@@ -516,8 +516,8 @@ services:
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_cloud_inventory_db?replicaSet=thinklab-rs0
 
   # Procurement (Journey 15, sixth service): purchase orders for a vendor, approved through the shared approval service and received in part or in whole by
-  # people; what arrived and whether it is late are judged when read. THINKLAB_PO_POLICY_ID has no default (the approval policy is provisioned after the
-  # approval service is up, like the CAB/ECAB policies; without it, sending an order for approval answers 502). Staff only.
+  # people; what arrived and whether it is late are judged when read. The approval policy of an order is that of its approval band (procurement ADR-036), made
+  # through band/initiate: nothing to configure here, and without a band that covers the total, sending an order for approval answers 502. Staff only.
   it-procurement:
     <<: *service
     build: ../micronaut-it-procurement-service
@@ -527,7 +527,6 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_procurement_db?replicaSet=thinklab-rs0
       WORKFLOW_APPROVAL_SERVICE_URL: http://workflow-approval:8080
-      THINKLAB_PO_POLICY_ID: ${THINKLAB_PO_POLICY_ID:-}
 
   # TEST DOUBLE, never part of a real deployment (profile health-test): something for the health monitor to watch, whose answer the smoke controls.
   mock-target:

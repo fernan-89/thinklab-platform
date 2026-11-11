@@ -123,14 +123,14 @@ jobs:
       # pre-approved, still work fine) - now that workflow-approval is up, provision the real policies
       # against it and recreate just the it-change-management container with their ids: compose detects
       # the changed environment and restarts only that one service, nothing else is touched.
-      - name: Provision CAB/ECAB policies for it-change-management and the purchase-order policy for it-procurement
+      - name: Provision CAB/ECAB policies for it-change-management and the purchase-order policy the procurement smokes use
         timeout-minutes: 3
         run: thinklab-platform/scripts/stack/provision-change-management.sh >> "$GITHUB_ENV"
 
-      - name: Restart it-change-management and it-procurement with their policy ids
+      - name: Restart it-change-management with its policy ids
         timeout-minutes: 3
         working-directory: thinklab-platform
-        run: timeout -k 10 150 docker compose up -d it-change-management it-procurement
+        run: timeout -k 10 150 docker compose up -d it-change-management
 
       - name: Wait until they are ready again
         timeout-minutes: 4
