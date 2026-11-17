@@ -459,6 +459,17 @@ services:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_vendor_registry_db?replicaSet=thinklab-rs0
 
+  # Journey 17, the Quick Install module: install kits (system, language, machine class), what happened when a kit ran, and the definition of the install
+  # stick built from the active kits. No machine, no secret (ADR-030 of that service); it calls only the hash service for ids. Staff only. In every edition.
+  it-install-kit:
+    <<: *service
+    build: ../micronaut-it-install-kit-service
+    image: thinklab/it-install-kit:local
+    ports: ["8115:8080"]
+    environment:
+      <<: *service-env
+      MONGODB_URI: mongodb://mongo:27017/thinklab_it_install_kit_db?replicaSet=thinklab-rs0
+
   # Journey 15, second service: the licence registry. Seats bought per product and the counts of seats in use the inventory tools report (a count,
   # never a list of people), judged when read: it calls no other service, holds no credential and reaches no asset. Staff only.
   it-license-registry:
@@ -619,6 +630,7 @@ services:
       GATEWAY_IT_DR_REGISTRY_URL: http://it-dr-registry:8080
       GATEWAY_IT_CLOUD_INVENTORY_URL: http://it-cloud-inventory:8080
       GATEWAY_IT_PROCUREMENT_URL: http://it-procurement:8080
+      GATEWAY_IT_INSTALL_KIT_URL: http://it-install-kit:8080
       # Plain-http compose stack: the refresh cookie cannot be Secure here (set true behind https). Path is as the browser sees it.
       GATEWAY_SESSION_COOKIE_SECURE: "false"
       GATEWAY_AUDIT_LEDGER_URL: http://compliance-audit-ledger:8080
