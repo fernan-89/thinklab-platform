@@ -83,15 +83,15 @@ item_id=$(api_body "$ingest" | json "['id']")
 again=$(api POST "$disc_api/initiate" "{\"source\":\"manual\",\"externalKey\":\"$external_key\",\"name\":\"Mystery sensor\",\"rawAttributes\":{\"mac\":\"$external_key\",\"vendor\":\"Acme\"}}" "$tenant")
 check_status 're-ingesting the same key is idempotent (200)' 200 "$again"
 check_equal 're-sighting keeps the same id' "$item_id" "$(api_body "$again" | json "['id']")"
-check_status 'promote straight from DISCOVERED is refused (409)' 409 "$(api PUT "$disc_api/$item_id/control/promote")"
-check_status 'review/claim' 204 "$(api PUT "$disc_api/$item_id/review/claim")"
-check_status 'promote without a suggestedCategory is refused (409)' 409 "$(api PUT "$disc_api/$item_id/control/promote")"
-check_status 'review/update records the category' 204 "$(api PUT "$disc_api/$item_id/review/update" '{"suggestedCategory":"IOT_SENSOR"}')"
-promoted=$(api PUT "$disc_api/$item_id/control/promote")
+check_status 'promote straight from DISCOVERED is refused (409)' 409 "$(api PUT "$disc_api/$item_id/control/promote" "" "$tenant")"
+check_status 'review/claim' 204 "$(api PUT "$disc_api/$item_id/review/claim" "" "$tenant")"
+check_status 'promote without a suggestedCategory is refused (409)' 409 "$(api PUT "$disc_api/$item_id/control/promote" "" "$tenant")"
+check_status 'review/update records the category' 204 "$(api PUT "$disc_api/$item_id/review/update" '{"suggestedCategory":"IOT_SENSOR"}' "$tenant")"
+promoted=$(api PUT "$disc_api/$item_id/control/promote" "" "$tenant")
 check_status 'promote creates the Asset' 200 "$promoted"
 check_equal 'item is PROMOTED' PROMOTED "$(api_body "$promoted" | json "['status']")"
 promoted_asset_id=$(api_body "$promoted" | json "['promotedAssetId']")
-real_asset=$(api GET "$asset_api/$promoted_asset_id/retrieve")
+real_asset=$(api GET "$asset_api/$promoted_asset_id/retrieve" "" "$tenant")
 check_status 'the promoted Asset really exists on it-asset-registry' 200 "$real_asset"
 check_equal 'its serial number is the externalKey' "$external_key" "$(api_body "$real_asset" | json "['serialNumber']")"
 check_equal 'its category is the suggested one' IOT_SENSOR "$(api_body "$real_asset" | json "['category']")"
@@ -102,7 +102,7 @@ check_equal 're-detecting a PROMOTED item never reopens it' PROMOTED "$(api_body
 definition=$(api POST "$catalog_api/initiate" '{"category":"VIRTUAL_MACHINE","jsonSchema":"{\"type\":\"object\",\"required\":[\"cpu\"]}"}' "$tenant")
 check_status 'TypeDefinition (VIRTUAL_MACHINE) created' 201 "$definition"
 definition_id=$(api_body "$definition" | json "['id']")
-check_status 'TypeDefinition activated' 204 "$(api PUT "$catalog_api/$definition_id/control/activate")"
+check_status 'TypeDefinition activated' 204 "$(api PUT "$catalog_api/$definition_id/control/activate" "" "$tenant")"
 
 bad=$(api POST "$asset_api/initiate" "{\"name\":\"vm-bad\",\"category\":\"VIRTUAL_MACHINE\",\"serialNumber\":\"VM-BAD-$(short)\",\"specifications\":{}}" "$tenant")
 check_status 'non-conforming specifications are rejected (422)' 422 "$bad"
@@ -116,15 +116,15 @@ vm_key="VM:$(short)"
 vm_item=$(api POST "$disc_api/initiate" "{\"source\":\"manual\",\"externalKey\":\"$vm_key\",\"name\":\"vm-discovered\",\"rawAttributes\":{\"hostname\":\"vm1\"}}" "$tenant")
 check_status 'VM item ingested' 201 "$vm_item"
 vm_id=$(api_body "$vm_item" | json "['id']")
-check_status 'VM item claimed' 204 "$(api PUT "$disc_api/$vm_id/review/claim")"
-check_status 'VM item categorised' 204 "$(api PUT "$disc_api/$vm_id/review/update" '{"suggestedCategory":"VIRTUAL_MACHINE"}')"
-rejected=$(api PUT "$disc_api/$vm_id/control/promote")
+check_status 'VM item claimed' 204 "$(api PUT "$disc_api/$vm_id/review/claim" "" "$tenant")"
+check_status 'VM item categorised' 204 "$(api PUT "$disc_api/$vm_id/review/update" '{"suggestedCategory":"VIRTUAL_MACHINE"}' "$tenant")"
+rejected=$(api PUT "$disc_api/$vm_id/control/promote" "" "$tenant")
 check_status 'promotion violating the schema is relayed (422)' 422 "$rejected"
 check_equal 'discovery error_code is ERR-DSC-00422' ERR-DSC-00422 "$(api_body "$rejected" | json "['error_code']")"
-check_equal 'the item stayed UNDER_REVIEW' UNDER_REVIEW "$(api_body "$(api GET "$disc_api/$vm_id/retrieve")" | json "['status']")"
+check_equal 'the item stayed UNDER_REVIEW' UNDER_REVIEW "$(api_body "$(api GET "$disc_api/$vm_id/retrieve" "" "$tenant")" | json "['status']")"
 resight=$(api POST "$disc_api/initiate" "{\"source\":\"manual\",\"externalKey\":\"$vm_key\",\"name\":\"vm-discovered\",\"rawAttributes\":{\"hostname\":\"vm1\",\"cpu\":\"8\"}}" "$tenant")
 check_status 're-sighting supplies the missing cpu attribute (200)' 200 "$resight"
-check_equal 'promotion now succeeds' PROMOTED "$(api_body "$(api PUT "$disc_api/$vm_id/control/promote")" | json "['status']")"
+check_equal 'promotion now succeeds' PROMOTED "$(api_body "$(api PUT "$disc_api/$vm_id/control/promote" "" "$tenant")" | json "['status']")"
 
 # 3. Topology: web -> app -> db, exact blast radius per direction ($graphLookup on a real MongoDB).
 # new_node LABEL VAR -> creates the node and stores its id in VAR (no command substitution, so the
@@ -145,7 +145,7 @@ check_equal 'db UPSTREAM reaches app(1), web(2)' 'app:1,web:2' "$(radius "$db" U
 check_equal 'app BOTH reaches db(1), web(1)' 'db:1,web:1' "$(radius "$app" BOTH)"
 check_equal 'maxHops=1 stops at the first hop' 'app:1' "$(radius "$web" DOWNSTREAM 1)"
 edge2_id=$(api_body "$e2" | json "['id']")
-check_status 'retire the app -> db edge' 204 "$(api PUT "$topo_api/edge/$edge2_id/control/retire")"
+check_status 'retire the app -> db edge' 204 "$(api PUT "$topo_api/edge/$edge2_id/control/retire" "" "$tenant")"
 check_equal 'a RETIRED edge is no longer traversed' 'app:1' "$(radius "$web" DOWNSTREAM)"
 check_status 'maxHops above the cap is refused (400)' 400 "$(api GET "$topo_api/$web/blast-radius/retrieve?maxHops=11" "" "$tenant")"
 check_status 'another tenant cannot see the node (404)' 404 "$(api GET "$topo_api/$web/blast-radius/retrieve" "" "X-Tenant-Id: $(uuid)")"

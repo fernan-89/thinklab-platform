@@ -36,8 +36,8 @@ $assets = @(
 foreach ($a in $assets) {
     $created = Invoke-Gateway POST '/it-asset-registry/v1/initiate' $tenant @{ name = $a.name; category = $a.category; serialNumber = $a.serial; specifications = $a.spec }
     # An asset cannot be DEPLOYED without a location (a real business rule the web app surfaces too).
-    if ($a.steps -contains 'deploy') { Invoke-Gateway PUT "/it-asset-registry/v1/$($created.id)/assignment/update" $executor @{ locationId = [guid]::NewGuid().ToString() } | Out-Null }
-    foreach ($step in $a.steps) { Invoke-Gateway PUT "/it-asset-registry/v1/$($created.id)/control/$step" $executor $null | Out-Null }
+    if ($a.steps -contains 'deploy') { Invoke-Gateway PUT "/it-asset-registry/v1/$($created.id)/assignment/update" $tenant @{ locationId = [guid]::NewGuid().ToString() } | Out-Null }
+    foreach ($step in $a.steps) { Invoke-Gateway PUT "/it-asset-registry/v1/$($created.id)/control/$step" $tenant $null | Out-Null }
 }
 
 # Discovery queue: two waiting, one already claimed and ready to be promoted.
@@ -47,7 +47,7 @@ $found = @(
     @{ source = 'manual'; externalKey = "rack-9-$suffix"; name = 'rack-9 switch'; rawAttributes = @{ location = 'DC1 / rack 9' } }
 )
 $items = foreach ($f in $found) { Invoke-Gateway POST '/it-discovery/v1/initiate' $tenant $f }
-Invoke-Gateway PUT "/it-discovery/v1/$($items[2].id)/review/claim" $executor $null | Out-Null
+Invoke-Gateway PUT "/it-discovery/v1/$($items[2].id)/review/claim" $tenant $null | Out-Null
 
 # Topology: users -> web -> app -> db, plus a cache the app also depends on.
 function New-Node([string]$label, [string]$type) {
