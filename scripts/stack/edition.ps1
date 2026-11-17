@@ -9,7 +9,7 @@
     .\edition.ps1 <edition> services                  the services of the set, one per line
 
   Each edition contains the one before it. Environment: THINKLAB_JAVA_OPTS, THINKLAB_GATEWAY_JAVA_OPTS, THINKLAB_FOOTPRINT_BUDGET_MIB (default per edition:
-  2560, 6144 and 9216 MiB), COMPOSE_FILE / COMPOSE_PROJECT_NAME. See edition.sh for what each edition holds and how the numbers were measured.
+  2816, 7168 and 10240 MiB), COMPOSE_FILE / COMPOSE_PROJECT_NAME. See edition.sh for what each edition holds and how the numbers were measured.
 #>
 param(
     [Parameter(Mandatory)][ValidateSet('homelab', 'team', 'enterprise')][string]$Edition,
@@ -27,9 +27,9 @@ $team = $homelab + @('site-reference-data-directory', 'it-operation-window', 'it
 $enterprise = $team + @('compliance-audit-ledger', 'anchor-store', 'subscription-billing', 'consumable-inventory', 'identity-federation', 'it-external-ticketing', 'it-ipam', 'it-cloud-cost', 'it-cloud-inventory', 'it-procurement')
 
 switch ($Edition) {
-    'homelab' { $services = $homelab; $heap = '-Xmx160m'; $budgetDefault = 2560 }
-    'team' { $services = $team; $heap = '-Xmx192m'; $budgetDefault = 6144 }
-    'enterprise' { $services = $enterprise; $heap = '-Xmx256m'; $budgetDefault = 9216 }
+    'homelab' { $services = $homelab; $heap = '-Xmx160m'; $budgetDefault = 2816 }
+    'team' { $services = $team; $heap = '-Xmx192m'; $budgetDefault = 7168 }
+    'enterprise' { $services = $enterprise; $heap = '-Xmx256m'; $budgetDefault = 10240 }
 }
 if (-not $env:THINKLAB_JAVA_OPTS) { $env:THINKLAB_JAVA_OPTS = "$heap -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1" }
 if (-not $env:THINKLAB_GATEWAY_JAVA_OPTS) { $env:THINKLAB_GATEWAY_JAVA_OPTS = '-Xmx256m -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1' }
