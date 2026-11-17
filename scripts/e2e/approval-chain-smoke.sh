@@ -46,7 +46,8 @@ inbox_size() { api_body "$(api GET "$wf/retrieve?pendingFor=$1" "" "X-Tenant-Id:
 file_request() {
   api POST "$wf/initiate" "{\"subjectType\":\"ChangeRequest\",\"subjectId\":\"$(uuid)\",\"requesterId\":\"$requester\",\"policyId\":\"$1\"}" "$tenant" "$tenant_exec"
 }
-decide() { api PUT "$wf/$1/decision/capture" "$3" "$(as "$2")"; }
+# The by-id routes of the approval service take the tenant (workflow-approval ADR-037): a decision carries it as well as the approver.
+decide() { api PUT "$wf/$1/decision/capture" "$3" "$tenant" "$(as "$2")"; }
 approve='{"outcome":"APPROVE"}'
 
 # 1. The policy: two stages, and what is refused.
@@ -82,7 +83,7 @@ check_equal 'the lead cannot decide a second time (409)' 409 "$(api_status "$(de
 # 4. Both reviewers vote at the same time: no vote may be lost.
 tmp=$(mktemp -d)
 for who in "$sec_a" "$sec_b"; do
-  ( curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "X-Executor: $who" -H 'Content-Type: application/json' -d "$approve" "$wf/$request_id/decision/capture" > "$tmp/$who" ) &
+  ( curl -sS -o /dev/null -w '%{http_code}' -X PUT -H "$tenant" -H "X-Executor: $who" -H 'Content-Type: application/json' -d "$approve" "$wf/$request_id/decision/capture" > "$tmp/$who" ) &
 done
 wait
 code_a=$(cat "$tmp/$sec_a"); code_b=$(cat "$tmp/$sec_b")
