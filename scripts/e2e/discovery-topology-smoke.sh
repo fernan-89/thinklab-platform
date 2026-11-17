@@ -22,12 +22,15 @@ short() { uuid | tr -d '-' | cut -c1-10; }
 api() {
   local method=$1 url=$2 body=${3:-}; shift 3 || shift $#
   local args=(-sS -X "$method" -w '\n%{http_code}')
-  local has_executor=0
+  local has_executor=0 has_tenant=0
   for h in "$@"; do
     args+=(-H "$h")
     [[ "$h" == X-Executor:* ]] && has_executor=1
+    [[ "$h" == X-Tenant-Id:* ]] && has_tenant=1
   done
   ((has_executor)) || args+=(-H "$executor")
+  # The by-id routes of the services take the tenant (ACTION-PLAN 0.8-c): once the organisation exists, every call carries it unless it names another.
+  [[ -n "${tenant:-}" ]] && ((! has_tenant)) && args+=(-H "$tenant")
   [[ -n "$body" ]] && args+=(-H 'Content-Type: application/json' -d "$body")
   local out; out=$(curl "${args[@]}" "$url")
   local code=${out##*$'\n'}; local content=${out%$'\n'*}

@@ -37,9 +37,9 @@ echo "organisation created: $tenant"
 
 # Only a DEPLOYED asset can enter MAINTENANCE.
 asset_id=$(call POST "$asset_api/initiate" "{\"name\":\"Laptop for repair\",\"category\":\"LAPTOP\",\"serialNumber\":\"SN-SMOKE-$(uuid | cut -c1-8)\",\"specifications\":{\"cpu\":\"i7\"}}" "X-Tenant-Id: $tenant" | json "['id']")
-call PUT "$asset_api/$asset_id/assignment/update" "{\"assignedToUserId\":\"$(uuid)\",\"locationId\":\"$(uuid)\"}" >/dev/null
-call PUT "$asset_api/$asset_id/control/ready" "" >/dev/null
-call PUT "$asset_api/$asset_id/control/deploy" "" >/dev/null
+call PUT "$asset_api/$asset_id/assignment/update" "{\"assignedToUserId\":\"$(uuid)\",\"locationId\":\"$(uuid)\"}" "X-Tenant-Id: $tenant" >/dev/null
+call PUT "$asset_api/$asset_id/control/ready" "" "X-Tenant-Id: $tenant" >/dev/null
+call PUT "$asset_api/$asset_id/control/deploy" "" "X-Tenant-Id: $tenant" >/dev/null
 echo "asset $asset_id is DEPLOYED"
 
 # Filed by the requester (self-service), then triaged, scheduled and started: control/start publishes repair-started.
