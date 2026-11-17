@@ -86,11 +86,11 @@ $itemId = $ingest.Body.id
 $again = Invoke-Api POST "$disc/initiate" $tenantAndExecutor @{ source = 'manual'; externalKey = $externalKey; name = 'Mystery sensor'; rawAttributes = @{ mac = $externalKey; vendor = 'Acme' } }
 Assert-Status 're-ingesting the same key is idempotent (200)' $again 200
 Assert-Equal 're-sighting keeps the same id' $again.Body.id $itemId
-Assert-Status 'promote straight from DISCOVERED is refused (409)' (Invoke-Api PUT "$disc/$itemId/control/promote" $executor) 409
-Assert-Status 'review/claim' (Invoke-Api PUT "$disc/$itemId/review/claim" $executor) 204
-Assert-Status 'promote without a suggestedCategory is refused (409)' (Invoke-Api PUT "$disc/$itemId/control/promote" $executor) 409
-Assert-Status 'review/update records the category' (Invoke-Api PUT "$disc/$itemId/review/update" $executor @{ suggestedCategory = 'IOT_SENSOR' }) 204
-$promoted = Invoke-Api PUT "$disc/$itemId/control/promote" $executor
+Assert-Status 'promote straight from DISCOVERED is refused (409)' (Invoke-Api PUT "$disc/$itemId/control/promote" $tenantAndExecutor) 409
+Assert-Status 'review/claim' (Invoke-Api PUT "$disc/$itemId/review/claim" $tenantAndExecutor) 204
+Assert-Status 'promote without a suggestedCategory is refused (409)' (Invoke-Api PUT "$disc/$itemId/control/promote" $tenantAndExecutor) 409
+Assert-Status 'review/update records the category' (Invoke-Api PUT "$disc/$itemId/review/update" $tenantAndExecutor @{ suggestedCategory = 'IOT_SENSOR' }) 204
+$promoted = Invoke-Api PUT "$disc/$itemId/control/promote" $tenantAndExecutor
 Assert-Status 'promote creates the Asset' $promoted 200
 Assert-Equal 'item is PROMOTED' $promoted.Body.status 'PROMOTED'
 $realAsset = Invoke-Api GET "$asset/$($promoted.Body.promotedAssetId)/retrieve" $executor
@@ -104,7 +104,7 @@ Assert-Equal 're-detecting a PROMOTED item never reopens it' $reseenTerminal.Bod
 $schema = '{"type":"object","required":["cpu"]}'
 $definition = Invoke-Api POST "$catalog/initiate" $tenantAndExecutor @{ category = 'VIRTUAL_MACHINE'; jsonSchema = $schema }
 Assert-Status 'TypeDefinition (VIRTUAL_MACHINE) created' $definition 201
-Assert-Status 'TypeDefinition activated' (Invoke-Api PUT "$catalog/$($definition.Body.id)/control/activate" $executor) 204
+Assert-Status 'TypeDefinition activated' (Invoke-Api PUT "$catalog/$($definition.Body.id)/control/activate" $tenantAndExecutor) 204
 
 $bad = Invoke-Api POST "$asset/initiate" $tenantAndExecutor @{ name = 'vm-bad'; category = 'VIRTUAL_MACHINE'; serialNumber = "VM-BAD-$([guid]::NewGuid().ToString('N').Substring(0,8))"; specifications = @{} }
 Assert-Status 'non-conforming specifications are rejected (422)' $bad 422
@@ -118,15 +118,15 @@ $vmKey = "VM:$([guid]::NewGuid().ToString('N').Substring(0,10))"
 $vmItem = Invoke-Api POST "$disc/initiate" $tenantAndExecutor @{ source = 'manual'; externalKey = $vmKey; name = 'vm-discovered'; rawAttributes = @{ hostname = 'vm1' } }
 Assert-Status 'VM item ingested' $vmItem 201
 $vmId = $vmItem.Body.id
-Assert-Status 'VM item claimed' (Invoke-Api PUT "$disc/$vmId/review/claim" $executor) 204
-Assert-Status 'VM item categorised' (Invoke-Api PUT "$disc/$vmId/review/update" $executor @{ suggestedCategory = 'VIRTUAL_MACHINE' }) 204
-$rejected = Invoke-Api PUT "$disc/$vmId/control/promote" $executor
+Assert-Status 'VM item claimed' (Invoke-Api PUT "$disc/$vmId/review/claim" $tenantAndExecutor) 204
+Assert-Status 'VM item categorised' (Invoke-Api PUT "$disc/$vmId/review/update" $tenantAndExecutor @{ suggestedCategory = 'VIRTUAL_MACHINE' }) 204
+$rejected = Invoke-Api PUT "$disc/$vmId/control/promote" $tenantAndExecutor
 Assert-Status 'promotion violating the schema is relayed (422)' $rejected 422
 Assert-Equal 'discovery error_code is ERR-DSC-00422' $rejected.Body.error_code 'ERR-DSC-00422'
-Assert-Equal 'the item stayed UNDER_REVIEW' (Invoke-Api GET "$disc/$vmId/retrieve" $executor).Body.status 'UNDER_REVIEW'
+Assert-Equal 'the item stayed UNDER_REVIEW' (Invoke-Api GET "$disc/$vmId/retrieve" $tenantAndExecutor).Body.status 'UNDER_REVIEW'
 $resight = Invoke-Api POST "$disc/initiate" $tenantAndExecutor @{ source = 'manual'; externalKey = $vmKey; name = 'vm-discovered'; rawAttributes = @{ hostname = 'vm1'; cpu = '8' } }
 Assert-Status 're-sighting supplies the missing cpu attribute (200)' $resight 200
-Assert-Equal 'promotion now succeeds' (Invoke-Api PUT "$disc/$vmId/control/promote" $executor).Body.status 'PROMOTED'
+Assert-Equal 'promotion now succeeds' (Invoke-Api PUT "$disc/$vmId/control/promote" $tenantAndExecutor).Body.status 'PROMOTED'
 
 # 3. Topology: web -> app -> db, exact blast radius per direction ($graphLookup on a real MongoDB).
 function New-Node([string]$Label) {
@@ -144,7 +144,7 @@ Assert-Equal 'web DOWNSTREAM reaches app(1), db(2)' (Get-Radius $web 'DOWNSTREAM
 Assert-Equal 'db UPSTREAM reaches app(1), web(2)' (Get-Radius $db 'UPSTREAM') 'app:1,web:2'
 Assert-Equal 'app BOTH reaches db(1), web(1)' (Get-Radius $app 'BOTH') 'db:1,web:1'
 Assert-Equal 'maxHops=1 stops at the first hop' (Get-Radius $web 'DOWNSTREAM' 1) 'app:1'
-Assert-Status 'retire the app -> db edge' (Invoke-Api PUT "$topo/edge/$($e2.Body.id)/control/retire" $executor) 204
+Assert-Status 'retire the app -> db edge' (Invoke-Api PUT "$topo/edge/$($e2.Body.id)/control/retire" $tenantAndExecutor) 204
 Assert-Equal 'a RETIRED edge is no longer traversed' (Get-Radius $web 'DOWNSTREAM') 'app:1'
 Assert-Status 'maxHops above the cap is refused (400)' (Invoke-Api GET "$topo/$web/blast-radius/retrieve?maxHops=11" $tenant) 400
 $otherTenant = @{ 'X-Tenant-Id' = [guid]::NewGuid().ToString() }
