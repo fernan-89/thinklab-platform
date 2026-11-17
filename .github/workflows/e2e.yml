@@ -231,6 +231,10 @@ jobs:
         timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/vendor-smoke.sh
 
+      - name: Install kit smoke (a kit is a recipe never a machine, a server kit is English only, an update raises the revision, the stick definition lists only active kits, a report keeps the revision that ran and may be filed against a retired kit, twenty registrations of one name make one kit, staff only, the tenant, the ledger)
+        timeout-minutes: 15
+        run: thinklab-platform/scripts/e2e/install-kit-smoke.sh
+
       - name: License smoke (a licence judged when read as OK, near its limit or over it, twenty reports of one count make one report, the latest count only moves forward, a tool that went silent is stale, nothing a tool says is kept or repeated, two people pausing at once, staff only, recorded on the ledger)
         timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/license-smoke.sh
