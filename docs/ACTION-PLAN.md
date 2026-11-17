@@ -16,7 +16,7 @@ Base: reavaliação do que foi feito, do que falta e das duas inspirações do p
 | 0.2 | Abrir Recovery, Cloud inventory e Procurement num navegador real, com a stack no ar, e anotar o que estranhar | Você | P | lista de ajustes enviada |
 | 0.3 | ~~Rodar os `.ps1` num Windows real~~ — **dispensado** (smokes só em bash, ver 1.4). O `start-local-stack.ps1` continua sendo o único script de subida local sem Docker | — | — | — |
 | 0.4 | Remedir a memória das edições (Enterprise tem 38 serviços agora) | Eu | P | tabela do README atualizada |
-| 0.5 | **Auditoria de corridas:** procurar nos adaptadores ordenação por relógio tirado antes da escrita, "olhar e depois escrever" sem apoio do banco e leituras limitadas a "os mais novos" usadas para achar "os mais antigos" | Eu | M | achados listados; cada um corrigido com teste que falha no código antigo |
+| 0.5 | **Auditoria de corridas:** procurar nos adaptadores ordenação por relógio tirado antes da escrita, "olhar e depois escrever" sem apoio do banco e leituras limitadas a "os mais novos" usadas para achar "os mais antigos" | Eu | M | achados listados; cada um corrigido com teste que falha no código antigo. **Feito (2026-11-17):** 12 serviços corrigidos, um PR cada; ver `docs/race-audit.md` |
 | 0.6 | **e2e determinístico:** listar os smokes que dependem de tempo (`sleep`, agendadores, relógio) e trocá-los por "avaliar e esperar o estado"; meta de 5 execuções seguidas verdes na master | Eu | M | 5 verdes seguidas |
 | 0.7 | Documentos: o guia e o blueprint deixam de ser diários; viram mapas que apontam para ADRs e READMEs de cada serviço | Eu | M | guia com menos de 1/3 do tamanho, sem perda de ADR |
 

@@ -45,3 +45,32 @@ Para as transições sem efeito fora do serviço: trocar `updateX(id, ...)` por 
 2. tornar a criação do ativo idempotente pela chave externa do item e guardar a gravação final: o perdedor recebe o mesmo ativo, sem estado novo, mas depende de o registro de ativos recusar ou devolver o ativo existente para a mesma chave (a verificar).
 
 Ordem sugerida: `it-discovery` (após a decisão), `it-change-management`, `workflow-approval`, `subscription-billing`, `it-hardware-maintenance`, `it-asset-registry`, depois o resto.
+
+## Resultado (2026-11-17)
+
+Os doze serviços foram corrigidos, um PR por serviço, cada um com um teste de corrida contra MongoDB real que falhou no código antigo, ADR própria, README e o portão de 100% de linhas e ramos. Padrão: escrita guardada por `{_id, status esperado}`; sem correspondência, 404 se o documento não existe e 409 (`ERR-<DOM>-00409`) se existe e mudou. A decisão do `it-discovery` foi a opção 1 (reservar antes, estado `PROMOTING`).
+
+| Serviço | PR | Nota |
+|---|---|---|
+| `it-discovery` | it-discovery#3 (fundido) | reserva `PROMOTING`, retomada de reserva abandonada após 5 minutos |
+| `it-change-management` | it-change-management#5 | lease de 2 minutos antes de chamar workflow-approval e operation-window; roteamento e agendamento não criam duas vezes |
+| `workflow-approval` | workflow-approval#6 | a corrida cancelar x última aprovação não reproduziu no código antigo; o teste fica como proteção |
+| `subscription-billing` | subscription-billing#3 | `updatePlan` guarda o plano lido; mudanças sequenciais legítimas formam uma cadeia sem quebra |
+| `it-hardware-maintenance` | it-hardware-maintenance#4 | |
+| `it-asset-registry` | it-asset-registry#10 | o tratador de eventos de ordem de serviço continua fail-open (ADR-026) |
+| `it-topology-graph` | it-topology-graph#3 | |
+| `identity-federation` | identity-federation#3 | |
+| `ci-type-catalog` | ci-type-catalog#3 | |
+| `consumable-inventory` | consumable-inventory#3 | |
+| `site-reference-data-directory` | site-reference-data-directory#3 | |
+| `notification-dispatch` | notification-dispatch#9 | guarda por status e tentativas (retry vale de `SENDING`); despacho reserva antes de chamar o canal |
+
+O CI de todos os PRs estava verde na última leitura (o de `notification-dispatch` ainda rodando).
+
+### Aceito e deixado como está (documentado nas ADRs dos serviços)
+
+- `updateRackStatus` do serviço de sites: sem efeito fora do serviço e sem trilha; fica para a segunda passada.
+- Edição de `ApprovalPolicy` e `updateDetails` do estoque de consumíveis: último a gravar vale, sem transição de estado.
+- Reativação de aresta no `it-topology-graph`: a checagem de nó existente continua fora da escrita.
+- `it-change-management`: rota e agendamento validam antes de tomar o lease; há uma janela curta entre a validação e o lease, coberta pela escrita guardada.
+- `party-reference-data-directory` (filtra por outro campo) segue para a segunda passada.
