@@ -83,6 +83,7 @@ $script:Services = @(
     [pscustomobject]@{ Name = 'micronaut-it-dr-registry-service';                   Port = 8112; Db = 'thinklab_it_dr_registry_db' },
     [pscustomobject]@{ Name = 'micronaut-it-cloud-inventory-service';               Port = 8113; Db = 'thinklab_it_cloud_inventory_db' },
     [pscustomobject]@{ Name = 'micronaut-it-procurement-service';                   Port = 8114; Db = 'thinklab_it_procurement_db' },
+    [pscustomobject]@{ Name = 'micronaut-it-install-kit-service';                   Port = 8115; Db = 'thinklab_it_install_kit_db' },
     [pscustomobject]@{ Name = 'micronaut-ci-type-catalog-service';                 Port = 8093; Db = 'thinklab_ci_type_catalog_db' }
 )
 

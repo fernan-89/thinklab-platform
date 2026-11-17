@@ -48,7 +48,8 @@ $tenantId = [guid]::NewGuid().ToString()
 $tenant = @{ 'X-Tenant-Id' = $tenantId; 'X-Executor' = 'approval-chain-smoke' }
 $lead = [guid]::NewGuid().ToString(); $secA = [guid]::NewGuid().ToString(); $secB = [guid]::NewGuid().ToString()
 $requester = [guid]::NewGuid().ToString()
-function As([string]$Approver) { @{ 'X-Executor' = $Approver } }
+# The by-id routes of the approval service take the tenant (workflow-approval ADR-037): a decision carries it as well as the approver.
+function As([string]$Approver) { @{ 'X-Executor' = $Approver; 'X-Tenant-Id' = $tenantId } }
 function Inbox([string]$Approver, [string]$Tenant = $tenantId) { @((Invoke-Api GET "$wf/retrieve?pendingFor=$Approver" @{ 'X-Tenant-Id' = $Tenant }).Body) }
 function File([string]$PolicyId) {
     (Invoke-Api POST "$wf/initiate" $tenant @{ subjectType = 'ChangeRequest'; subjectId = [guid]::NewGuid().ToString(); requesterId = $requester; policyId = $PolicyId })
@@ -88,14 +89,14 @@ Assert-Equal 'the lead cannot decide a second time (409)' (Invoke-Api PUT "$wf/$
 
 # 4. Both reviewers vote at the same time: no vote may be lost.
 $vote = {
-    param($url, $approver)
+    param($url, $approver, $tenantArg)
     try {
-        $r = Invoke-WebRequest -Method PUT -Uri $url -UseBasicParsing -ContentType 'application/json' -Body '{"outcome":"APPROVE"}' -Headers @{ 'X-Executor' = $approver }
+        $r = Invoke-WebRequest -Method PUT -Uri $url -UseBasicParsing -ContentType 'application/json' -Body '{"outcome":"APPROVE"}' -Headers @{ 'X-Executor' = $approver; 'X-Tenant-Id' = $tenantArg }
         [int]$r.StatusCode
     } catch { [int]$_.Exception.Response.StatusCode }
 }
 $voteUrl = "$wf/$requestId/decision/capture"
-$jobs = @((Start-Job -ScriptBlock $vote -ArgumentList $voteUrl, $secA), (Start-Job -ScriptBlock $vote -ArgumentList $voteUrl, $secB))
+$jobs = @((Start-Job -ScriptBlock $vote -ArgumentList $voteUrl, $secA, $tenantId), (Start-Job -ScriptBlock $vote -ArgumentList $voteUrl, $secB, $tenantId))
 $codes = @($jobs | Wait-Job | Receive-Job)
 $jobs | Remove-Job
 Assert-Equal 'each simultaneous vote is accepted or told to retry (200/409), never an error' (@($codes | Where-Object { $_ -ne 200 -and $_ -ne 409 }).Count) 0
