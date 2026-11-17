@@ -4,8 +4,9 @@
 # For each service of the audit's group A it creates one object as tenant X, then reads it back as tenant Y by id (retrieve, and audit-log when the service has
 # one). The right answer is a 404 (another tenant's object is the same as none). A 200 is a LEAK. Read-only on Y's side; it writes one object per service as X.
 #
-# A ratchet, not a one-off: LEAKY lists the services known to leak today. The probe FAILS when a service outside that list leaks (a regression) and FAILS when a
-# listed service stops leaking (the fix is in: remove it from LEAKY, so it can never come back). Each service fix PR removes one name from the list.
+# A ratchet, not a one-off: LEAKY lists the services known to leak today. The probe FAILS when a service outside that list leaks (a regression). A listed service that
+# stops leaking is reported as FIXED and does not fail the job (the service lives in another repository and merges first): remove its name from LEAKY in the next
+# platform PR, so it can never come back.
 #
 # Needs the stack up (the services are called on their own ports; security off, the tenant is the X-Tenant-Id header). Bash only (ACTION-PLAN 1.4).
 set -uo pipefail
@@ -84,13 +85,13 @@ for svc in asset-registry change-management discovery hardware-maintenance opera
   elif [[ $leaked == 1 ]]; then
     if is_leaky "$svc"; then verdict=leak-known; else verdict=LEAK-NEW; failed=$((failed + 1)); fi
   else
-    if is_leaky "$svc"; then verdict=FIXED; failed=$((failed + 1)); else verdict=ok; fi
+    if is_leaky "$svc"; then verdict=FIXED; else verdict=ok; fi
   fi
   printf '%-22s %-8s own=%s%s\n' "$svc" "$verdict" "$own" "$answers"
 done
 
 echo
 echo "leak-known: a leak the audit already lists (fix it, then remove the service from LEAKY)."
-echo "FIXED:      listed in LEAKY but no longer leaks: remove it from LEAKY so it cannot come back."
+echo "FIXED:      listed in LEAKY but no longer leaks (not a failure): remove it from LEAKY so it cannot come back."
 echo "LEAK-NEW:   a service outside the list leaks: a regression."
 [[ $failed -eq 0 ]]
