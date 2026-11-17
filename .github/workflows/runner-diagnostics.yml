@@ -23,7 +23,7 @@ jobs:
       matrix:
         runner: [ubuntu-22.04, ubuntu-24.04]
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 8
+    timeout-minutes: 20
     steps:
       - name: The machine
         timeout-minutes: 1
@@ -43,9 +43,13 @@ jobs:
           timeout -k 5 30 docker info --format 'kernel {{.KernelVersion}}, memory {{.MemTotal}} bytes, containers {{.Containers}}, images {{.Images}}' || true
           timeout -k 5 30 docker system df || true
       - name: MongoDB 8.0 alone
-        timeout-minutes: 3
+        timeout-minutes: 7
         run: |
-          timeout -k 5 120 docker run -d --name mongo-80 mongo:8.0 mongod --replSet rs0 --bind_ip_all || true
+          # The image is pulled first, with time of its own: on 2026-11-16 the pull alone took over 120 seconds on ubuntu-22.04, the old `docker run` hit its
+          # timeout mid-pull and the step reported "mongo:8.0 does not start", which was not true. A pull that fails says nothing about the kernel, so it
+          # is a warning (inconclusive), never the error below.
+          if ! timeout -k 5 300 docker pull -q mongo:8.0; then echo "::warning::could not pull mongo:8.0 within 5 minutes on ${{ matrix.runner }}: inconclusive, not a kernel problem"; exit 0; fi
+          timeout -k 5 60 docker run -d --name mongo-80 mongo:8.0 mongod --replSet rs0 --bind_ip_all || true
           sleep 15
           docker ps -a --filter name=mongo-80 --format '{{.Names}}: {{.Status}}' || true
           docker logs --tail 5 mongo-80 2>&1 | cut -c1-300 || true
@@ -56,9 +60,10 @@ jobs:
           # ubuntu-24.04 is where mongo:8.0 does not start (kernel 6.19 to 7.0.13): when it starts there, the e2e job can go back to it.
           if [ "${{ matrix.runner }}" = "ubuntu-24.04" ] && [ "$running" = "true" ]; then echo "::notice::mongo:8.0 now starts on ubuntu-24.04: the e2e job can go back to it (see the comment on runs-on in e2e.yml)"; fi
       - name: MongoDB 7.0 alone
-        timeout-minutes: 3
+        timeout-minutes: 7
         run: |
-          timeout -k 5 120 docker run -d --name mongo-70 mongo:7.0 mongod --replSet rs0 --bind_ip_all || true
+          if ! timeout -k 5 300 docker pull -q mongo:7.0; then echo "::warning::could not pull mongo:7.0 within 5 minutes on ${{ matrix.runner }}: inconclusive"; exit 0; fi
+          timeout -k 5 60 docker run -d --name mongo-70 mongo:7.0 mongod --replSet rs0 --bind_ip_all || true
           sleep 15
           docker ps -a --filter name=mongo-70 --format '{{.Names}}: {{.Status}}' || true
           docker logs --tail 5 mongo-70 2>&1 | cut -c1-300 || true
