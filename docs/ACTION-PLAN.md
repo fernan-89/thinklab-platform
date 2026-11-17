@@ -18,7 +18,7 @@ Base: reavaliação do que foi feito, do que falta e das duas inspirações do p
 | 0.4 | Remedir a memória das edições (Enterprise tem 38 serviços agora) | Eu | P | tabela do README atualizada |
 | 0.5 | **Auditoria de corridas:** procurar nos adaptadores ordenação por relógio tirado antes da escrita, "olhar e depois escrever" sem apoio do banco e leituras limitadas a "os mais novos" usadas para achar "os mais antigos" | Eu | M | achados listados; cada um corrigido com teste que falha no código antigo. **Feito (2026-11-17):** 12 serviços corrigidos, um PR cada; ver `docs/race-audit.md` |
 | 0.6 | **e2e determinístico:** listar os smokes que dependem de tempo (`sleep`, agendadores, relógio) e trocá-los por "avaliar e esperar o estado"; meta de 5 execuções seguidas verdes na master | Eu | M | 5 verdes seguidas |
-| 0.7 | Documentos: o guia e o blueprint deixam de ser diários; viram mapas que apontam para ADRs e READMEs de cada serviço | Eu | M | guia com menos de 1/3 do tamanho, sem perda de ADR |
+| 0.7 | Documentos: o guia e o blueprint deixam de ser diários; viram mapas que apontam para ADRs e READMEs de cada serviço | Eu | M | guia com menos de 1/3 do tamanho, sem perda de ADR**Feito (2026-11-17):** blueprint v55 em 32% do tamanho da v54 (83 KB contra 258 KB), nenhuma ADR citada se perdeu; o diário virou linha do tempo e cada serviço é um cartão com ADRs e link do repositório. Cópias v51 e v54 guardadas ao lado do arquivo; artifact novo (o v51 publicado continua no ar). |
 
 ## Fase 1 — Refatorar (o que mais reduz custo dali em diante)
 
