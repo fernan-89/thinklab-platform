@@ -11,7 +11,8 @@
 # Needs the stack up (the services are called on their own ports; security off, the tenant is the X-Tenant-Id header). Bash only (ACTION-PLAN 1.4).
 set -uo pipefail
 
-LEAKY=(asset-registry change-management discovery hardware-maintenance operation-window site-directory ci-type-catalog topology-graph notification-dispatch)
+# Empty: all nine services of group A are fixed and merged (2026-11-18). Any leak from now on is a regression and fails the job.
+LEAKY=()
 
 host="${PROBE_HOST:-http://localhost}"
 org_api="$host:8081/party-reference-data-directory/v1"
@@ -67,7 +68,7 @@ add ci-type-catalog "$(post "$catalog_api/initiate" "{\"category\":\"SERVER\",\"
 add topology-graph "$(post "$topology_api/initiate" "{\"nodeType\":\"ASSET\",\"externalId\":\"$(uuid)\",\"label\":\"probe\",\"attributes\":{\"tier\":\"web\"}}" "$tenant_x")" "$topology_api" "retrieve"
 add notification-dispatch "$(post "$notify_api/initiate" "{\"recipient\":\"probe@thinklab.com\",\"subject\":\"Probe\",\"body\":\"probe\",\"channel\":\"LOG\"}" "$tenant_x")" "$notify_api" "retrieve"
 
-is_leaky() { local s; for s in "${LEAKY[@]}"; do [[ "$s" == "$1" ]] && return 0; done; return 1; }
+is_leaky() { local s; for s in ${LEAKY[@]+"${LEAKY[@]}"}; do [[ "$s" == "$1" ]] && return 0; done; return 1; }
 
 failed=0
 printf '%-22s %-8s %s\n' service verdict "answers of tenant Y to what tenant X made"
