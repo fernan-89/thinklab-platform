@@ -15,7 +15,7 @@
 # A route of a service that is not started answers 502 from the gateway; nothing else depends on the missing services. Environment:
 #   THINKLAB_JAVA_OPTS               the JVM options of every service (default below: a 160 MiB heap for homelab, 192 MiB for team, the compose default of 256 MiB for enterprise)
 #   THINKLAB_GATEWAY_JAVA_OPTS       the same for the gateway, which is not capped outside these editions (default below: 256 MiB)
-#   THINKLAB_FOOTPRINT_BUDGET_MIB    what `footprint` allows in total (default per edition: 2560, 6144 and 9216 MiB, about a fifth above what was measured idle: 2.1, 5.0 and 7.3 GiB)
+#   THINKLAB_FOOTPRINT_BUDGET_MIB    what `footprint` allows in total (default per edition: 2816, 7168 and 10240 MiB, about a fifth above what was measured idle: 2.3, 5.7 and 8.4 GiB)
 #   COMPOSE_FILE / COMPOSE_PROJECT_NAME   as docker compose reads them (for instance to add an override file)
 set -euo pipefail
 cd "$(dirname "$0")/../.."
@@ -30,9 +30,9 @@ team=("${homelab[@]}" site-reference-data-directory it-operation-window it-hardw
 enterprise=("${team[@]}" compliance-audit-ledger anchor-store subscription-billing consumable-inventory identity-federation it-external-ticketing it-ipam it-cloud-cost it-cloud-inventory it-procurement)
 
 case "$edition" in
-  homelab) services=("${homelab[@]}"); heap="-Xmx160m"; budget_default=2560 ;;
-  team) services=("${team[@]}"); heap="-Xmx192m"; budget_default=6144 ;;
-  enterprise) services=("${enterprise[@]}"); heap="-Xmx256m"; budget_default=9216 ;;
+  homelab) services=("${homelab[@]}"); heap="-Xmx160m"; budget_default=2816 ;;
+  team) services=("${team[@]}"); heap="-Xmx192m"; budget_default=7168 ;;
+  enterprise) services=("${enterprise[@]}"); heap="-Xmx256m"; budget_default=10240 ;;
   *) echo "usage: $0 <homelab|team|enterprise> up|down|footprint|services" >&2; exit 2 ;;
 esac
 export THINKLAB_JAVA_OPTS="${THINKLAB_JAVA_OPTS:-$heap -Xss512k -XX:+UseSerialGC -XX:TieredStopAtLevel=1}"
