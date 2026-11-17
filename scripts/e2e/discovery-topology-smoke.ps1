@@ -93,7 +93,7 @@ Assert-Status 'review/update records the category' (Invoke-Api PUT "$disc/$itemI
 $promoted = Invoke-Api PUT "$disc/$itemId/control/promote" $tenantAndExecutor
 Assert-Status 'promote creates the Asset' $promoted 200
 Assert-Equal 'item is PROMOTED' $promoted.Body.status 'PROMOTED'
-$realAsset = Invoke-Api GET "$asset/$($promoted.Body.promotedAssetId)/retrieve" $executor
+$realAsset = Invoke-Api GET "$asset/$($promoted.Body.promotedAssetId)/retrieve" $tenantAndExecutor
 Assert-Status 'the promoted Asset really exists on it-asset-registry' $realAsset 200
 Assert-Equal 'its serial number is the externalKey' $realAsset.Body.serialNumber $externalKey
 Assert-Equal 'its category is the suggested one' $realAsset.Body.category 'IOT_SENSOR'

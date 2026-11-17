@@ -91,7 +91,7 @@ promoted=$(api PUT "$disc_api/$item_id/control/promote" "" "$tenant")
 check_status 'promote creates the Asset' 200 "$promoted"
 check_equal 'item is PROMOTED' PROMOTED "$(api_body "$promoted" | json "['status']")"
 promoted_asset_id=$(api_body "$promoted" | json "['promotedAssetId']")
-real_asset=$(api GET "$asset_api/$promoted_asset_id/retrieve")
+real_asset=$(api GET "$asset_api/$promoted_asset_id/retrieve" "" "$tenant")
 check_status 'the promoted Asset really exists on it-asset-registry' 200 "$real_asset"
 check_equal 'its serial number is the externalKey' "$external_key" "$(api_body "$real_asset" | json "['serialNumber']")"
 check_equal 'its category is the suggested one' IOT_SENSOR "$(api_body "$real_asset" | json "['category']")"
