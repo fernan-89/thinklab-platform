@@ -79,10 +79,10 @@ $assetResponse = Invoke-Api POST "$asset/initiate" $tenantAndExecutor @{ name = 
 Assert-Status 'asset created (PROVISIONED)' $assetResponse 201
 $assetId = $assetResponse.Body.id
 
-$assignResponse = Invoke-Api PUT "$asset/$assetId/assignment/update" $executorHeader @{ assignedToUserId = [guid]::NewGuid().ToString(); locationId = [guid]::NewGuid().ToString() }
+$assignResponse = Invoke-Api PUT "$asset/$assetId/assignment/update" $tenantAndExecutor @{ assignedToUserId = [guid]::NewGuid().ToString(); locationId = [guid]::NewGuid().ToString() }
 Assert-Status 'asset assigned a location' $assignResponse 204
-Assert-Status 'asset control/ready' (Invoke-Api PUT "$asset/$assetId/control/ready" $executorHeader) 204
-Assert-Status 'asset control/deploy (now DEPLOYED)' (Invoke-Api PUT "$asset/$assetId/control/deploy" $executorHeader) 204
+Assert-Status 'asset control/ready' (Invoke-Api PUT "$asset/$assetId/control/ready" $tenantAndExecutor) 204
+Assert-Status 'asset control/deploy (now DEPLOYED)' (Invoke-Api PUT "$asset/$assetId/control/deploy" $tenantAndExecutor) 204
 
 # 2. File a WorkOrder against it, requester self-service style (no operator-supplied requesterId).
 $requesterId = [guid]::NewGuid().ToString()
@@ -94,19 +94,19 @@ Assert-Status 'work order requesterId defaults to the caller' ([pscustomobject]@
 
 # 3. Triage, schedule, start - control/start publishes repair-started.
 Assert-Status 'triage (REQUESTED -> TRIAGED)' (Invoke-Api PUT "$wo/$woId/triage" $tenantAndExecutor @{ priority = 'P1' }) 204
-Assert-Status 'schedule (TRIAGED -> SCHEDULED)' (Invoke-Api PUT "$wo/$woId/schedule" $executorHeader) 204
-Assert-Status 'control/start (SCHEDULED -> IN_REPAIR)' (Invoke-Api PUT "$wo/$woId/control/start" $executorHeader) 204
+Assert-Status 'schedule (TRIAGED -> SCHEDULED)' (Invoke-Api PUT "$wo/$woId/schedule" $tenantAndExecutor) 204
+Assert-Status 'control/start (SCHEDULED -> IN_REPAIR)' (Invoke-Api PUT "$wo/$woId/control/start" $tenantAndExecutor) 204
 
 Write-Output '  waiting up to 20s for the asset to reach MAINTENANCE...'
-$statusAfterStart = Wait-AssetStatus -AssetApi $asset -AssetId $assetId -Headers $executorHeader -TargetStatus 'MAINTENANCE'
+$statusAfterStart = Wait-AssetStatus -AssetApi $asset -AssetId $assetId -Headers $tenantAndExecutor -TargetStatus 'MAINTENANCE'
 [void]$results.Add([pscustomobject]@{ Check = 'asset reaches MAINTENANCE via repair-started event'; Expected = 'MAINTENANCE'; Actual = $statusAfterStart; Result = if ($statusAfterStart -eq 'MAINTENANCE') { 'PASS' } else { 'FAIL' } })
 
 # 4. Complete the repair and pass quality check - control/pass publishes repair-completed.
-Assert-Status 'control/complete-repair (IN_REPAIR -> QUALITY_CHECK)' (Invoke-Api PUT "$wo/$woId/control/complete-repair" $executorHeader @{ diagnosis = 'Replaced the motherboard'; additionalLaborMinutes = 45 }) 204
-Assert-Status 'control/pass (QUALITY_CHECK -> RESOLVED)' (Invoke-Api PUT "$wo/$woId/control/pass" $executorHeader @{ resolutionCode = 'RC-MOBO-SMOKE' }) 204
+Assert-Status 'control/complete-repair (IN_REPAIR -> QUALITY_CHECK)' (Invoke-Api PUT "$wo/$woId/control/complete-repair" $tenantAndExecutor @{ diagnosis = 'Replaced the motherboard'; additionalLaborMinutes = 45 }) 204
+Assert-Status 'control/pass (QUALITY_CHECK -> RESOLVED)' (Invoke-Api PUT "$wo/$woId/control/pass" $tenantAndExecutor @{ resolutionCode = 'RC-MOBO-SMOKE' }) 204
 
 Write-Output '  waiting up to 20s for the asset to return to DEPLOYED...'
-$statusAfterPass = Wait-AssetStatus -AssetApi $asset -AssetId $assetId -Headers $executorHeader -TargetStatus 'DEPLOYED'
+$statusAfterPass = Wait-AssetStatus -AssetApi $asset -AssetId $assetId -Headers $tenantAndExecutor -TargetStatus 'DEPLOYED'
 [void]$results.Add([pscustomobject]@{ Check = 'asset returns to DEPLOYED via repair-completed event'; Expected = 'DEPLOYED'; Actual = $statusAfterPass; Result = if ($statusAfterPass -eq 'DEPLOYED') { 'PASS' } else { 'FAIL' } })
 
 $results | Format-Table -AutoSize | Out-String | Write-Output

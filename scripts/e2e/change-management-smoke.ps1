@@ -72,7 +72,8 @@ $taxId = (Get-Random -Minimum 10000000 -Maximum 99999999).ToString() + (Get-Rand
 $orgResponse = Invoke-Api POST "$org/initiate" $executorHeader @{ corporateName = 'GMUD Corp'; tradeName = 'GMUD'; taxIdentifier = $taxId; billing = @{ billingEmail = 'b@gmud.example'; currency = 'USD'; taxRegime = 'SIMPLES' } }
 Assert-Status 'organisation created' $orgResponse 201
 $orgId = $orgResponse.Body.id
-$tenantAndExecutor = $executorHeader + @{ 'X-Tenant-Id' = $orgId }
+$tenant = @{ 'X-Tenant-Id' = $orgId }
+$tenantAndExecutor = $executorHeader + $tenant
 
 $serial = "SN-GMUD-$([guid]::NewGuid().ToString('N').Substring(0,8))"
 $assetResponse = Invoke-Api POST "$asset/initiate" $tenantAndExecutor @{ name = 'Core switch'; category = 'NETWORK_DEVICE'; serialNumber = $serial; specifications = @{ model = 'SW-9000' } }
@@ -85,47 +86,47 @@ $normalResponse = Invoke-Api POST "$chg/initiate" $tenantAndExecutor @{ requeste
 Assert-Status 'NORMAL change initiated (DRAFT)' $normalResponse 201
 $normalId = $normalResponse.Body.id
 
-Assert-Status 'control/submit (DRAFT -> SUBMITTED)' (Invoke-Api PUT "$chg/$normalId/control/submit" $executorHeader) 204
-Assert-Status 'assess (SUBMITTED -> ASSESSED)' (Invoke-Api PUT "$chg/$normalId/assess" $executorHeader @{ riskLevel = 'MEDIUM'; impactLevel = 'MEDIUM' }) 204
-Assert-Status 'route-for-approval (ASSESSED -> CAB_REVIEW)' (Invoke-Api PUT "$chg/$normalId/route-for-approval" $executorHeader) 204
+Assert-Status 'control/submit (DRAFT -> SUBMITTED)' (Invoke-Api PUT "$chg/$normalId/control/submit" $tenantAndExecutor) 204
+Assert-Status 'assess (SUBMITTED -> ASSESSED)' (Invoke-Api PUT "$chg/$normalId/assess" $tenantAndExecutor @{ riskLevel = 'MEDIUM'; impactLevel = 'MEDIUM' }) 204
+Assert-Status 'route-for-approval (ASSESSED -> CAB_REVIEW)' (Invoke-Api PUT "$chg/$normalId/route-for-approval" $tenantAndExecutor) 204
 
-$afterRouting = Invoke-Api GET "$chg/$normalId/retrieve" $executorHeader
+$afterRouting = Invoke-Api GET "$chg/$normalId/retrieve" $tenantAndExecutor
 Assert-Equal 'status after routing is CAB_REVIEW' $afterRouting.Body.status 'CAB_REVIEW'
 Assert-Status 'approvalRequestId was recorded' ([pscustomobject]@{ Status = $(if ($afterRouting.Body.approvalRequestId) { 200 } else { 0 }) }) 200
 
 $cabApprovers = $policies.cabApproverIds
-$decision1 = Invoke-Api PUT "$chg/$normalId/approval/capture" @{ 'X-Executor' = $cabApprovers[0] } @{ outcome = 'APPROVE'; comment = 'Looks fine' }
+$decision1 = Invoke-Api PUT "$chg/$normalId/approval/capture" (@{ 'X-Executor' = $cabApprovers[0] } + $tenant) @{ outcome = 'APPROVE'; comment = 'Looks fine' }
 Assert-Status 'decision 1/2 captured (still CAB_REVIEW)' $decision1 200
 Assert-Equal 'decision 1/2 leaves the change in CAB_REVIEW' $decision1.Body.status 'CAB_REVIEW'
 
-$decision2 = Invoke-Api PUT "$chg/$normalId/approval/capture" @{ 'X-Executor' = $cabApprovers[1] } @{ outcome = 'APPROVE'; comment = 'Agreed' }
+$decision2 = Invoke-Api PUT "$chg/$normalId/approval/capture" (@{ 'X-Executor' = $cabApprovers[1] } + $tenant) @{ outcome = 'APPROVE'; comment = 'Agreed' }
 Assert-Status 'decision 2/2 captured (quorum reached)' $decision2 200
 Assert-Equal 'quorum reached: change is now APPROVED' $decision2.Body.status 'APPROVED'
 
 $plannedStart = (Get-Date).AddHours(2).ToString('o')
 $plannedEnd = (Get-Date).AddHours(4).ToString('o')
-$scheduleResponse = Invoke-Api PUT "$chg/$normalId/schedule" $executorHeader @{ plannedStart = $plannedStart; plannedEnd = $plannedEnd }
+$scheduleResponse = Invoke-Api PUT "$chg/$normalId/schedule" $tenantAndExecutor @{ plannedStart = $plannedStart; plannedEnd = $plannedEnd }
 Assert-Status 'schedule (APPROVED -> SCHEDULED, reserves a real operation-window)' $scheduleResponse 204
 
-$afterScheduling = Invoke-Api GET "$chg/$normalId/retrieve" $executorHeader
+$afterScheduling = Invoke-Api GET "$chg/$normalId/retrieve" $tenantAndExecutor
 Assert-Equal 'status after scheduling is SCHEDULED' $afterScheduling.Body.status 'SCHEDULED'
 Assert-Status 'operationWindowId was recorded' ([pscustomobject]@{ Status = $(if ($afterScheduling.Body.operationWindowId) { 200 } else { 0 }) }) 200
 
-Assert-Status 'control/start (SCHEDULED -> IN_PROGRESS)' (Invoke-Api PUT "$chg/$normalId/control/start" $executorHeader) 204
-Assert-Status 'complete (IN_PROGRESS -> IMPLEMENTED)' (Invoke-Api PUT "$chg/$normalId/complete" $executorHeader @{ implementationNotes = 'Firmware updated, verified' }) 204
-Assert-Status 'control/close (IMPLEMENTED -> CLOSED)' (Invoke-Api PUT "$chg/$normalId/control/close" $executorHeader @{ closeNotes = 'No incidents' }) 204
+Assert-Status 'control/start (SCHEDULED -> IN_PROGRESS)' (Invoke-Api PUT "$chg/$normalId/control/start" $tenantAndExecutor) 204
+Assert-Status 'complete (IN_PROGRESS -> IMPLEMENTED)' (Invoke-Api PUT "$chg/$normalId/complete" $tenantAndExecutor @{ implementationNotes = 'Firmware updated, verified' }) 204
+Assert-Status 'control/close (IMPLEMENTED -> CLOSED)' (Invoke-Api PUT "$chg/$normalId/control/close" $tenantAndExecutor @{ closeNotes = 'No incidents' }) 204
 
 # 3. EMERGENCY change -> ECAB_REVIEW -> a single REJECT vetoes it immediately.
 $emergencyResponse = Invoke-Api POST "$chg/initiate" $tenantAndExecutor @{ requesterId = $requesterId; title = 'Emergency patch'; description = 'CVE fix'; changeType = 'EMERGENCY'; targetAssetIds = @($assetId) }
 Assert-Status 'EMERGENCY change initiated (DRAFT)' $emergencyResponse 201
 $emergencyId = $emergencyResponse.Body.id
 
-Assert-Status 'control/submit' (Invoke-Api PUT "$chg/$emergencyId/control/submit" $executorHeader) 204
-Assert-Status 'assess' (Invoke-Api PUT "$chg/$emergencyId/assess" $executorHeader @{ riskLevel = 'HIGH'; impactLevel = 'HIGH' }) 204
-Assert-Status 'route-for-approval (ASSESSED -> ECAB_REVIEW)' (Invoke-Api PUT "$chg/$emergencyId/route-for-approval" $executorHeader) 204
+Assert-Status 'control/submit' (Invoke-Api PUT "$chg/$emergencyId/control/submit" $tenantAndExecutor) 204
+Assert-Status 'assess' (Invoke-Api PUT "$chg/$emergencyId/assess" $tenantAndExecutor @{ riskLevel = 'HIGH'; impactLevel = 'HIGH' }) 204
+Assert-Status 'route-for-approval (ASSESSED -> ECAB_REVIEW)' (Invoke-Api PUT "$chg/$emergencyId/route-for-approval" $tenantAndExecutor) 204
 
 $ecabApprovers = $policies.ecabApproverIds
-$vetoDecision = Invoke-Api PUT "$chg/$emergencyId/approval/capture" @{ 'X-Executor' = $ecabApprovers[0] } @{ outcome = 'REJECT'; comment = 'Needs more testing' }
+$vetoDecision = Invoke-Api PUT "$chg/$emergencyId/approval/capture" (@{ 'X-Executor' = $ecabApprovers[0] } + $tenant) @{ outcome = 'REJECT'; comment = 'Needs more testing' }
 Assert-Status 'single ECAB decision captured' $vetoDecision 200
 Assert-Equal 'single REJECT resolves the change to REJECTED' $vetoDecision.Body.status 'REJECTED'
 
@@ -135,11 +136,11 @@ Assert-Equal 'single REJECT resolves the change to REJECTED' $vetoDecision.Body.
 $collisionResponse = Invoke-Api POST "$chg/initiate" $tenantAndExecutor @{ requesterId = $requesterId; title = 'Conflicting change'; description = 'd'; changeType = 'STANDARD'; targetAssetIds = @($assetId) }
 Assert-Status 'second change initiated for the collision check' $collisionResponse 201
 $collisionId = $collisionResponse.Body.id
-Assert-Status 'control/submit' (Invoke-Api PUT "$chg/$collisionId/control/submit" $executorHeader) 204
-Assert-Status 'assess' (Invoke-Api PUT "$chg/$collisionId/assess" $executorHeader @{ riskLevel = 'LOW'; impactLevel = 'LOW' }) 204
-Assert-Status 'route-for-approval (STANDARD, pre-approved)' (Invoke-Api PUT "$chg/$collisionId/route-for-approval" $executorHeader) 204
+Assert-Status 'control/submit' (Invoke-Api PUT "$chg/$collisionId/control/submit" $tenantAndExecutor) 204
+Assert-Status 'assess' (Invoke-Api PUT "$chg/$collisionId/assess" $tenantAndExecutor @{ riskLevel = 'LOW'; impactLevel = 'LOW' }) 204
+Assert-Status 'route-for-approval (STANDARD, pre-approved)' (Invoke-Api PUT "$chg/$collisionId/route-for-approval" $tenantAndExecutor) 204
 
-$collisionSchedule = Invoke-Api PUT "$chg/$collisionId/schedule" $executorHeader @{ plannedStart = $plannedStart; plannedEnd = $plannedEnd }
+$collisionSchedule = Invoke-Api PUT "$chg/$collisionId/schedule" $tenantAndExecutor @{ plannedStart = $plannedStart; plannedEnd = $plannedEnd }
 Assert-Status 'schedule collides with the first change''s window (409)' $collisionSchedule 409
 Assert-Equal 'collision error_code is ERR-CHG-00409' $collisionSchedule.Body.error_code 'ERR-CHG-00409'
 
@@ -154,29 +155,29 @@ Assert-Status 'CHANGE_FREEZE window created' $freezeResponse 201
 $freezeChange = Invoke-Api POST "$chg/initiate" $tenantAndExecutor @{ requesterId = $requesterId; title = 'Emergency during freeze'; description = 'P1 outage'; changeType = 'EMERGENCY'; targetAssetIds = @($assetId) }
 Assert-Status 'EMERGENCY change initiated for the freeze check' $freezeChange 201
 $freezeChangeId = $freezeChange.Body.id
-Assert-Status 'control/submit' (Invoke-Api PUT "$chg/$freezeChangeId/control/submit" $executorHeader) 204
-Assert-Status 'assess' (Invoke-Api PUT "$chg/$freezeChangeId/assess" $executorHeader @{ riskLevel = 'HIGH'; impactLevel = 'HIGH' }) 204
-Assert-Status 'route-for-approval (ASSESSED -> ECAB_REVIEW)' (Invoke-Api PUT "$chg/$freezeChangeId/route-for-approval" $executorHeader) 204
-$ecabApprove = Invoke-Api PUT "$chg/$freezeChangeId/approval/capture" @{ 'X-Executor' = $ecabApprovers[0] } @{ outcome = 'APPROVE'; comment = 'Emergency approved' }
+Assert-Status 'control/submit' (Invoke-Api PUT "$chg/$freezeChangeId/control/submit" $tenantAndExecutor) 204
+Assert-Status 'assess' (Invoke-Api PUT "$chg/$freezeChangeId/assess" $tenantAndExecutor @{ riskLevel = 'HIGH'; impactLevel = 'HIGH' }) 204
+Assert-Status 'route-for-approval (ASSESSED -> ECAB_REVIEW)' (Invoke-Api PUT "$chg/$freezeChangeId/route-for-approval" $tenantAndExecutor) 204
+$ecabApprove = Invoke-Api PUT "$chg/$freezeChangeId/approval/capture" (@{ 'X-Executor' = $ecabApprovers[0] } + $tenant) @{ outcome = 'APPROVE'; comment = 'Emergency approved' }
 Assert-Equal 'a single ECAB approval makes the EMERGENCY change APPROVED' $ecabApprove.Body.status 'APPROVED'
 
 $freezePlan = @{ plannedStart = $freezeStart.AddHours(1).ToString('o'); plannedEnd = $freezeStart.AddHours(3).ToString('o') }
-$blocked = Invoke-Api PUT "$chg/$freezeChangeId/schedule" $executorHeader $freezePlan
+$blocked = Invoke-Api PUT "$chg/$freezeChangeId/schedule" $tenantAndExecutor $freezePlan
 Assert-Status 'schedule over the CHANGE_FREEZE without an override is blocked (409)' $blocked 409
 Assert-Equal 'blocked error_code is ERR-CHG-00409' $blocked.Body.error_code 'ERR-CHG-00409'
 
 # Who may waive a freeze (change management ADR-036): an ADMIN/SERVICE, or anyone on the ECAB. Security is off here, so the role is
 # whatever the caller states (X-Role); an OPERATOR who is not on the ECAB is refused, an OPERATOR who is on it may.
 $override = $freezePlan + @{ freezeOverrideJustification = 'P1 outage, ECAB approved' }
-$outsider = Invoke-Api PUT "$chg/$freezeChangeId/schedule" @{ 'X-Executor' = 'ops-not-on-the-ecab'; 'X-Role' = 'OPERATOR' } $override
+$outsider = Invoke-Api PUT "$chg/$freezeChangeId/schedule" (@{ 'X-Executor' = 'ops-not-on-the-ecab'; 'X-Role' = 'OPERATOR' } + $tenant) $override
 Assert-Status 'an OPERATOR who is not on the ECAB cannot waive the freeze (403)' $outsider 403
 Assert-Equal 'refusal error_code is ERR-CHG-00403' $outsider.Body.error_code 'ERR-CHG-00403'
-Assert-Equal 'the refused change is still APPROVED' (Invoke-Api GET "$chg/$freezeChangeId/retrieve" $executorHeader).Body.status 'APPROVED'
-$overridden = Invoke-Api PUT "$chg/$freezeChangeId/schedule" @{ 'X-Executor' = $ecabApprovers[0]; 'X-Role' = 'OPERATOR' } $override
+Assert-Equal 'the refused change is still APPROVED' (Invoke-Api GET "$chg/$freezeChangeId/retrieve" $tenantAndExecutor).Body.status 'APPROVED'
+$overridden = Invoke-Api PUT "$chg/$freezeChangeId/schedule" (@{ 'X-Executor' = $ecabApprovers[0]; 'X-Role' = 'OPERATOR' } + $tenant) $override
 Assert-Status 'an OPERATOR who sits on the ECAB can waive the freeze (204)' $overridden 204
-Assert-Equal 'the overriding change is SCHEDULED' (Invoke-Api GET "$chg/$freezeChangeId/retrieve" $executorHeader).Body.status 'SCHEDULED'
+Assert-Equal 'the overriding change is SCHEDULED' (Invoke-Api GET "$chg/$freezeChangeId/retrieve" $tenantAndExecutor).Body.status 'SCHEDULED'
 
-$refused = Invoke-Api PUT "$chg/$collisionId/schedule" $executorHeader (@{ plannedStart = $plannedStart; plannedEnd = $plannedEnd; freezeOverrideJustification = 'not an emergency' })
+$refused = Invoke-Api PUT "$chg/$collisionId/schedule" $tenantAndExecutor (@{ plannedStart = $plannedStart; plannedEnd = $plannedEnd; freezeOverrideJustification = 'not an emergency' })
 Assert-Status 'an override on a non-EMERGENCY change is refused (400)' $refused 400
 
 $results | Format-Table -AutoSize | Out-String | Write-Output
