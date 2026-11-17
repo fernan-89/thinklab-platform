@@ -1,0 +1,27 @@
+# Auditoria de tenant nas rotas por id (ACTION-PLAN 0.8-c)
+
+Data: 2026-11-17. **Só relatório**: nenhum serviço foi alterado. Vem do achado do workflow-approval (ADR-037): uma rota que acha o objeto só pelo `id` deixa quem souber um UUID ler ou alterar dado de outro tenant.
+
+## Método e limite
+
+Passada estática sobre os 35 serviços `micronaut-*-service`: (1) portas de repositório com `findById(UUID id)` sem organização; (2) chamadas a `repository.findById(x)` de um argumento nos casos de uso; (3) rotas `{id}` do controller **sem** o cabeçalho `X-Tenant-Id`. É uma varredura de texto: **não prova** que há vazamento (um caso de uso pode carregar pelo id e comparar a organização depois, como o service-request faz) e **não prova** o contrário. A prova é um teste entre tenants (abaixo).
+
+## Resultado
+
+| Grupo | Serviços (rotas por id sem tenant / rotas por id) | Leitura |
+|---|---|---|
+| **A. Lacuna provável** (dado do tenant, rota só com o id) | asset-registry (8/8), change-management (13/13), discovery (6/6), hardware-maintenance (18/18; só `X-Executor` e `X-Role`), operation-window (8/8), site-reference-data-directory (10/10), ci-type-catalog (5/5), topology-graph (9/10), notification-dispatch (6/6) | Os serviços mais antigos. Amostra lida: `GET /{id}/retrieve` do asset-registry e do discovery recebe só o `id`. |
+| **B. A olhar caso a caso** | hash-token-registry (6/6, ids soberanos, provavelmente global por desenho), party-authentication (5/7), party-reference-data-directory (13/13, a organização é a raiz), subscription-billing (5/12, planos são globais, assinaturas são do tenant) | Pode ser por desenho; cada um precisa de uma decisão. |
+| **C. Porta sem tenant, rotas com tenant** | compliance-audit-ledger, consumable-inventory, identity-federation, service-request (2 chamadas) | O tenant chega ao serviço; falta ler o caso de uso para saber se compara depois de carregar. |
+| **D. Com escopo** | alerting, backup, capacity, cloud-cost, cloud-inventory, dr-registry, external-ticketing (2 chamadas a verificar), health-monitoring (1 a verificar), incident, install-kit, ipam, knowledge-base, license, patch, problem, procurement, vendor, workflow-approval (corrigido em 2026-11-14), gateway | Os serviços feitos depois do padrão de tenant em toda rota. |
+
+Padrão: **os serviços das primeiras jornadas (ativos, mudanças, descoberta, manutenção, janelas, sites, catálogo de tipos, topologia, notificações) não filtram por tenant nas rotas por id**; os feitos depois, sim.
+
+## Como fechar (proposta, a decidir)
+
+1. **Prova primeiro:** um script de sondagem que, para cada serviço do grupo A, cria um objeto como o tenant X e tenta ler, alterar e cancelar como o tenant Y pelo gateway. Resultado esperado hoje: 200 onde deveria ser 404. Dá a lista exata e vira o teste de regressão.
+2. **Um PR por serviço**, na ordem de gravidade (mudanças e ativos primeiro, por serem os que mais guardam): cabeçalho `X-Tenant-Id` obrigatório nas rotas por id, `findById(id, organisationId)` no repositório (o sem tenant deixa de existir), teste de outro tenant dando 404, Postman com o cabeçalho, 100% de cobertura.
+3. **Chamadores primeiro** (padrão do ADR-037): quem chama essas rotas de outro serviço (o discovery chama o asset-registry, o change-management chama o operation-window, o hardware-maintenance chama o asset-registry) passa a mandar o tenant antes de o serviço chamado passar a exigir. O web e o gateway já mandam o tenant em toda chamada.
+4. Grupos B e C: decidir caso a caso (global por desenho, ou escopo), depois tratar como o grupo A.
+
+Custo estimado: 9 serviços do grupo A, um PR cada (P a M), mais os chamadores.
