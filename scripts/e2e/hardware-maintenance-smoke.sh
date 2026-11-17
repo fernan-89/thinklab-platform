@@ -48,11 +48,11 @@ wo_id=$(curl -sS -X POST "$wo_api/initiate" -H "X-Executor: $requester" -H 'X-Ro
   -H 'Content-Type: application/json' -d "{\"assetId\":\"$asset_id\",\"title\":\"Laptop wont boot\",\"symptom\":\"Black screen on power-on\",\"type\":\"CORRECTIVE\"}" | json "['id']")
 echo "work order filed: $wo_id"
 call PUT "$wo_api/$wo_id/triage" '{"priority":"P1"}' "X-Tenant-Id: $tenant" >/dev/null
-call PUT "$wo_api/$wo_id/schedule" "" >/dev/null
-call PUT "$wo_api/$wo_id/control/start" "" >/dev/null
+call PUT "$wo_api/$wo_id/schedule" "" "X-Tenant-Id: $tenant" >/dev/null
+call PUT "$wo_api/$wo_id/control/start" "" "X-Tenant-Id: $tenant" >/dev/null
 wait_asset "$asset_id" "$tenant" MAINTENANCE
 
 # Completed and passed: control/pass publishes repair-completed.
-call PUT "$wo_api/$wo_id/control/complete-repair" '{"diagnosis":"Replaced the motherboard","additionalLaborMinutes":45}' >/dev/null
-call PUT "$wo_api/$wo_id/control/pass" '{"resolutionCode":"RC-MOBO-SMOKE"}' >/dev/null
+call PUT "$wo_api/$wo_id/control/complete-repair" '{"diagnosis":"Replaced the motherboard","additionalLaborMinutes":45}' "X-Tenant-Id: $tenant" >/dev/null
+call PUT "$wo_api/$wo_id/control/pass" '{"resolutionCode":"RC-MOBO-SMOKE"}' "X-Tenant-Id: $tenant" >/dev/null
 wait_asset "$asset_id" "$tenant" DEPLOYED
