@@ -20,7 +20,7 @@ $ErrorActionPreference = 'Stop'
 Set-Location (Join-Path $PSScriptRoot '..\..')
 
 $homelab = @('mongo', 'nats', 'hash-token-registry', 'party-reference-data-directory', 'party-authentication', 'it-asset-registry', 'it-discovery', 'it-health-monitoring',
-             'it-capacity-registry', 'it-incident-management', 'it-alerting', 'gateway')
+             'it-capacity-registry', 'it-incident-management', 'it-alerting', 'it-install-kit', 'gateway')
 $team = $homelab + @('site-reference-data-directory', 'it-operation-window', 'it-hardware-maintenance', 'workflow-approval', 'it-change-management', 'it-service-request',
                      'it-problem-management', 'it-knowledge-base', 'it-topology-graph', 'ci-type-catalog', 'notification-dispatch', 'it-backup-registry', 'it-patch-registry',
                      'it-dr-registry', 'it-vendor-registry', 'it-license-registry')

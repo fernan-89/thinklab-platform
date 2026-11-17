@@ -7,7 +7,7 @@
 #   scripts/stack/edition.sh <edition> services                    # the services of the set, one per line (the CI checks that each is defined in docker-compose.yml)
 #
 # Each edition contains the one before it:
-#   homelab     sign-in, assets, discovery, health checks, capacity, incidents and alerting, behind the gateway.
+#   homelab     sign-in, assets, discovery, health checks, capacity, incidents and alerting, the Quick Install kits, behind the gateway.
 #   team        + sites, maintenance windows and hardware maintenance, change management with its approvals, the service desk (requests, problems,
 #               knowledge base), the topology graph and the type catalog, notifications, and the backup, patch, DR, vendor and licence registries.
 #   enterprise  everything the compose file starts: also the audit ledger and its anchor store, plans and subscriptions, consumables, single sign-on,
@@ -23,7 +23,7 @@ cd "$(dirname "$0")/../.."
 edition="${1:-}"; command="${2:-}"
 
 homelab=(mongo nats hash-token-registry party-reference-data-directory party-authentication it-asset-registry it-discovery it-health-monitoring
-         it-capacity-registry it-incident-management it-alerting gateway)
+         it-capacity-registry it-incident-management it-alerting it-install-kit gateway)
 team=("${homelab[@]}" site-reference-data-directory it-operation-window it-hardware-maintenance workflow-approval it-change-management it-service-request
       it-problem-management it-knowledge-base it-topology-graph ci-type-catalog notification-dispatch it-backup-registry it-patch-registry it-dr-registry
       it-vendor-registry it-license-registry)

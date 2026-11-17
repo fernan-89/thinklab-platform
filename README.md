@@ -47,6 +47,7 @@ own repository (`micronaut-<domain>-service`); this repository ties them togethe
 | it-cloud-cost | 8111 | `micronaut-it-cloud-cost-service` |
 | it-cloud-inventory | 8113 | `micronaut-it-cloud-inventory-service` |
 | it-procurement | 8114 | `micronaut-it-procurement-service` |
+| it-install-kit | 8115 | `micronaut-it-install-kit-service` |
 | it-dr-registry | 8112 | `micronaut-it-dr-registry-service` |
 
 Infrastructure: MongoDB 8.0 as a single-node replica set (multi-document transactions, which the
@@ -107,9 +108,9 @@ For Kubernetes (no manifests live here): `livenessProbe` is `GET /health/livenes
 
 | Edition | Services | Heap per service | Measured idle | Budget `footprint` allows |
 |---|---|---|---|---|
-| `homelab` | 12: MongoDB, NATS, sign-in, assets, discovery, health checks, capacity, incidents, alerting, the gateway | 160 MiB | 2.1 GiB | 2560 MiB |
-| `team` | 28: also sites, maintenance windows and hardware maintenance, change management and its approvals, requests, problems, knowledge base, topology graph, type catalog, notifications, and the backup, patch, DR, vendor and licence registries | 192 MiB | 5.0 GiB | 6144 MiB |
-| `enterprise` | 38: everything the compose file starts, also the audit ledger and its anchor store, plans and subscriptions, consumables, single sign-on, the Jira and ServiceNow connector, IPAM, cloud costs, the cloud inventory and procurement | 256 MiB (the compose default) | 7.3 GiB | 9216 MiB |
+| `homelab` | 13: MongoDB, NATS, sign-in, assets, discovery, health checks, capacity, incidents, alerting, the Quick Install kits, the gateway | 160 MiB | 2.1 GiB | 2560 MiB |
+| `team` | 29: also sites, maintenance windows and hardware maintenance, change management and its approvals, requests, problems, knowledge base, topology graph, type catalog, notifications, and the backup, patch, DR, vendor and licence registries | 192 MiB | 5.0 GiB | 6144 MiB |
+| `enterprise` | 39: everything the compose file starts, also the audit ledger and its anchor store, plans and subscriptions, consumables, single sign-on, the Jira and ServiceNow connector, IPAM, cloud costs, the cloud inventory and procurement | 256 MiB (the compose default) | 7.3 GiB | 9216 MiB |
 
 Measured on 2026-10-19 (the `enterprise` row before the cloud inventory and procurement, two more services of about the size of the cloud cost registry, were added; it has not been measured again), each edition started from nothing in its own compose project (own MongoDB 7.0, no published ports), then 90 to 150 seconds idle
 once every container was up, nothing restarting. The gateway has a 256 MiB heap in all three (it had no cap at all and started at 1.1 GiB). In `enterprise`,
