@@ -299,6 +299,10 @@ jobs:
         timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/gateway-smoke.sh
 
+      - name: Tenant probe (does a service hand tenant X's object to tenant Y by id? a ratchet, docs/TENANT-AUDIT-2026-11.md)
+        timeout-minutes: 5
+        run: thinklab-platform/scripts/e2e/tenant-probe.sh
+
       - name: Service logs
         if: failure()
         # Run 42510028767: this step sat for 9 minutes after a failed start. Without a limit it runs to the job's 40 minutes, the job is cancelled
