@@ -6,9 +6,8 @@
   by operation-window-service's existing collision detection (ADR-033).
 
 .DESCRIPTION
-  Needs the CAB/ECAB ApprovalPolicy ids start-local-stack.ps1 provisions and writes to
-  thinklab-platform\.e2e\change-management-policies.json - run that script (with -Build) first so
-  it-change-management starts with THINKLAB_CAB_POLICY_ID/THINKLAB_ECAB_POLICY_ID already set:
+  The CAB and ECAB belong to the tenant (ADR-039): the smoke makes its own on workflow-approval and sets them with approval-settings/update. Needs the stack up with the
+  per-tenant switches on (the Docker stack and start-local-stack.ps1 both do):
 
     .\start-local-stack.ps1 -Build
     powershell -File .\change-management-smoke.ps1
@@ -24,7 +23,7 @@ param(
     [string]$AssetUrl = 'http://localhost:8083',
     [string]$ChangeManagementUrl = 'http://localhost:8086',
     [string]$OperationWindowUrl = 'http://localhost:8084',
-    [string]$PoliciesFile = (Join-Path $PSScriptRoot '..\..\.e2e\change-management-policies.json')
+    [string]$WorkflowApprovalUrl = 'http://localhost:8090'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -59,8 +58,7 @@ function Assert-Equal {
     [void]$results.Add([pscustomobject]@{ Check = $Name; Expected = $Expected; Actual = $Actual; Result = if ($ok) { 'PASS' } else { 'FAIL' } })
 }
 
-if (-not (Test-Path $PoliciesFile)) { throw "Missing $PoliciesFile - run start-local-stack.ps1 -Build first (it provisions the CAB/ECAB policies)." }
-$policies = Get-Content $PoliciesFile -Raw | ConvertFrom-Json
+$approval = "$WorkflowApprovalUrl/workflow-approval/v1"
 
 $org = "$OrgUrl/party-reference-data-directory/v1"
 $asset = "$AssetUrl/it-asset-registry/v1"
@@ -74,6 +72,15 @@ Assert-Status 'organisation created' $orgResponse 201
 $orgId = $orgResponse.Body.id
 $tenant = @{ 'X-Tenant-Id' = $orgId }
 $tenantAndExecutor = $executorHeader + $tenant
+
+# The tenant's own CAB (two approvals of three) and ECAB (one of two) on workflow-approval, set as its approval settings (ADR-039): there is no shared pair to provision.
+$cabApprovers = @(1..3 | ForEach-Object { [guid]::NewGuid().ToString() })
+$ecabApprovers = @(1..2 | ForEach-Object { [guid]::NewGuid().ToString() })
+$cabPolicy = Invoke-Api POST "$approval/policy/initiate" $tenantAndExecutor @{ name = 'CAB'; requiredApprovals = 2; eligibleApproverIds = $cabApprovers }
+Assert-Status 'CAB policy of the tenant created (2 of 3)' $cabPolicy 201
+$ecabPolicy = Invoke-Api POST "$approval/policy/initiate" $tenantAndExecutor @{ name = 'ECAB'; requiredApprovals = 1; eligibleApproverIds = $ecabApprovers }
+Assert-Status 'ECAB policy of the tenant created (1 of 2)' $ecabPolicy 201
+Assert-Status 'the tenant approval settings are stored' (Invoke-Api PUT "$chg/approval-settings/update" $tenantAndExecutor @{ cabPolicyId = $cabPolicy.Body.id; ecabPolicyId = $ecabPolicy.Body.id }) 200
 
 $serial = "SN-GMUD-$([guid]::NewGuid().ToString('N').Substring(0,8))"
 $assetResponse = Invoke-Api POST "$asset/initiate" $tenantAndExecutor @{ name = 'Core switch'; category = 'NETWORK_DEVICE'; serialNumber = $serial; specifications = @{ model = 'SW-9000' } }
@@ -94,7 +101,6 @@ $afterRouting = Invoke-Api GET "$chg/$normalId/retrieve" $tenantAndExecutor
 Assert-Equal 'status after routing is CAB_REVIEW' $afterRouting.Body.status 'CAB_REVIEW'
 Assert-Status 'approvalRequestId was recorded' ([pscustomobject]@{ Status = $(if ($afterRouting.Body.approvalRequestId) { 200 } else { 0 }) }) 200
 
-$cabApprovers = $policies.cabApproverIds
 $decision1 = Invoke-Api PUT "$chg/$normalId/approval/capture" (@{ 'X-Executor' = $cabApprovers[0] } + $tenant) @{ outcome = 'APPROVE'; comment = 'Looks fine' }
 Assert-Status 'decision 1/2 captured (still CAB_REVIEW)' $decision1 200
 Assert-Equal 'decision 1/2 leaves the change in CAB_REVIEW' $decision1.Body.status 'CAB_REVIEW'
@@ -125,7 +131,6 @@ Assert-Status 'control/submit' (Invoke-Api PUT "$chg/$emergencyId/control/submit
 Assert-Status 'assess' (Invoke-Api PUT "$chg/$emergencyId/assess" $tenantAndExecutor @{ riskLevel = 'HIGH'; impactLevel = 'HIGH' }) 204
 Assert-Status 'route-for-approval (ASSESSED -> ECAB_REVIEW)' (Invoke-Api PUT "$chg/$emergencyId/route-for-approval" $tenantAndExecutor) 204
 
-$ecabApprovers = $policies.ecabApproverIds
 $vetoDecision = Invoke-Api PUT "$chg/$emergencyId/approval/capture" (@{ 'X-Executor' = $ecabApprovers[0] } + $tenant) @{ outcome = 'REJECT'; comment = 'Needs more testing' }
 Assert-Status 'single ECAB decision captured' $vetoDecision 200
 Assert-Equal 'single REJECT resolves the change to REJECTED' $vetoDecision.Body.status 'REJECTED'

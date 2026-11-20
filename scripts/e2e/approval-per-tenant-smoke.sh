@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Live proof of ADR-039 of it-change-management: the CAB and ECAB policies belong to the tenant.
 #
-# Runs against the second change-management of the stack (compose profile `approval-per-tenant`, port 8196), the one started with
-# THINKLAB_CHANGE_APPROVAL_POLICY_PER_TENANT=true; the default one on 8086 keeps the shared pair so the other smokes are untouched.
+# Runs against the stack's change-management (8086), which has the per-tenant switch on by default (THINKLAB_CHANGE_APPROVAL_POLICY_PER_TENANT) and workflow-approval
+# the tenant-scoped policy lookup (THINKLAB_APPROVAL_POLICY_TENANT_SCOPED).
 #
 #   1. a tenant without settings: reading them and routing a NORMAL change are both a 422 (ERR-CHG-00422), never another tenant's policy;
 #   2. the settings are set from two real policies of the tenant at workflow-approval; an unknown policy is a 400; below ADMIN it is a 403;
@@ -14,7 +14,7 @@ set -uo pipefail
 org_api="${ORG_URL:-http://localhost:8081}/party-reference-data-directory/v1"
 asset_api="${ASSET_URL:-http://localhost:8083}/it-asset-registry/v1"
 approval_api="${WORKFLOW_APPROVAL_URL:-http://localhost:8090}/workflow-approval/v1"
-chg_api="${CHANGE_MANAGEMENT_PER_TENANT_URL:-http://localhost:8196}/it-change-management/v1"
+chg_api="${CHANGE_MANAGEMENT_URL:-http://localhost:8086}/it-change-management/v1"
 executor='X-Executor: approval-per-tenant-smoke'
 checks=0
 failed=0

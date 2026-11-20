@@ -5,15 +5,12 @@
 # single ECAB decision, and a real scheduling collision surfaced by operation-window-service's existing
 # collision detection (ADR-033).
 #
-# Needs the CAB/ECAB ApprovalPolicy ids provision-change-management.sh writes to
-# thinklab-platform/.e2e/change-management-policies.json, and it-change-management restarted with
-# THINKLAB_CAB_POLICY_ID/THINKLAB_ECAB_POLICY_ID already set from them - see that script and
-# .github/workflows/e2e.yml for the two-phase docker-compose sequence this depends on.
+# The CAB and ECAB belong to the tenant (ADR-039 of change-management): the smoke makes its own organisation, creates a CAB (two approvals of three) and an ECAB (one of
+# two) on workflow-approval for it and sets them with approval-settings/update, so it needs no provisioning and no restart of the service.
 set -uo pipefail
 org_api="${ORG_URL:-http://localhost:8081}/party-reference-data-directory/v1"
 asset_api="${ASSET_URL:-http://localhost:8083}/it-asset-registry/v1"
 chg_api="${CHANGE_MANAGEMENT_URL:-http://localhost:8086}/it-change-management/v1"
-policies_file="${POLICIES_FILE:-$(dirname "$0")/../../.e2e/change-management-policies.json}"
 executor='X-Executor: change-management-smoke'
 checks=0
 failed=0
@@ -69,10 +66,8 @@ check_equal() {
   fi
 }
 
-[[ -f "$policies_file" ]] || { echo "Missing $policies_file - run provision-change-management.sh first." >&2; exit 1; }
-cab_approver_1=$(json "['cabApproverIds'][0]" <"$policies_file")
-cab_approver_2=$(json "['cabApproverIds'][1]" <"$policies_file")
-ecab_approver_1=$(json "['ecabApproverIds'][0]" <"$policies_file")
+cab_approver_1=$(uuid); cab_approver_2=$(uuid); cab_approver_3=$(uuid)
+ecab_approver_1=$(uuid); ecab_approver_2=$(uuid)
 
 # 1. A real Organisation and a real Asset to be the change's target.
 tax_id=$(printf '%014d' $(( (RANDOM << 30 | RANDOM << 15 | RANDOM) % 100000000000000 )))
@@ -80,6 +75,15 @@ org_response=$(api POST "$org_api/initiate" "{\"corporateName\":\"GMUD Corp\",\"
 check_status 'organisation created' 201 "$org_response"
 org_id=$(api_body "$org_response" | json "['id']")
 tenant="X-Tenant-Id: $org_id"
+
+# The tenant's own CAB and ECAB on workflow-approval, set as its approval settings (the policies belong to the tenant, ADR-036 of workflow-approval).
+approval_api="${WORKFLOW_APPROVAL_URL:-http://localhost:8090}/workflow-approval/v1"
+cab_response=$(api POST "$approval_api/policy/initiate" "{\"name\":\"CAB\",\"requiredApprovals\":2,\"eligibleApproverIds\":[\"$cab_approver_1\",\"$cab_approver_2\",\"$cab_approver_3\"]}" "$tenant")
+check_status 'CAB policy of the tenant created (2 of 3)' 201 "$cab_response"
+ecab_response=$(api POST "$approval_api/policy/initiate" "{\"name\":\"ECAB\",\"requiredApprovals\":1,\"eligibleApproverIds\":[\"$ecab_approver_1\",\"$ecab_approver_2\"]}" "$tenant")
+check_status 'ECAB policy of the tenant created (1 of 2)' 201 "$ecab_response"
+settings_response=$(api PUT "$chg_api/approval-settings/update" "{\"cabPolicyId\":\"$(api_body "$cab_response" | json "['id']")\",\"ecabPolicyId\":\"$(api_body "$ecab_response" | json "['id']")\"}" "$tenant")
+check_status 'the tenant approval settings are stored' 200 "$settings_response"
 
 serial="SN-GMUD-$(uuid | cut -c1-8)"
 asset_response=$(api POST "$asset_api/initiate" "{\"name\":\"Core switch\",\"category\":\"NETWORK_DEVICE\",\"serialNumber\":\"$serial\",\"specifications\":{\"model\":\"SW-9000\"}}" "$tenant")

@@ -19,7 +19,7 @@ dr="$gateway/it-dr-registry/v1"
 inv_reg="$gateway/it-cloud-inventory/v1"
 mongo_container="${MONGO_CONTAINER:-thinklab-mongo-1}"
 po="$gateway/it-procurement/v1"
-policy_file="${POLICY_FILE:-$(dirname "$0")/../../.e2e/procurement-policy.json}"
+approval_api="${WORKFLOW_APPROVAL_URL:-http://localhost:8090}/workflow-approval/v1"
 inc="$gateway/it-incident-management/v1"
 checks=0
 failed=0
@@ -192,11 +192,10 @@ evaluate > /dev/null
 check_equal 'a terminated resource opens nothing, however long ago it was seen' 0 "$(stb GET "$alr/retrieve?checkId=$gone" | count)"
 
 # 10. A purchase order that is late (ADR-043). An order cannot be drafted with an expected day in the past, so the smoke moves the expected day of a placed order
-# back in the store (docker exec, as for section 9); the approval goes through the REAL approval service with the purchase-order policy.
-[[ -f "$policy_file" ]] || { echo "Missing $policy_file - run provision-change-management.sh first." >&2; exit 1; }
-approver=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['approverIds'][0])" "$policy_file")
+# back in the store (docker exec, as for section 9); the approval goes through the REAL approval service with a purchase-order policy of this tenant.
+approver=$(uuid)
 # The approval policy of an order is that of its approval band (procurement ADR-036): this tenant needs a band at 0 before an order can be sent for approval.
-policy_id=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['policyId'])" "$policy_file")
+policy_id=$(api_body "$(api POST "$approval_api/policy/initiate" "{\"name\":\"PURCHASE-ORDER\",\"requiredApprovals\":1,\"eligibleApproverIds\":[\"$approver\"]}" "X-Tenant-Id: $tenant_id")" | json "['id']")
 st POST "$po/band/initiate" "{\"currency\":\"BRL\",\"fromAmount\":0,\"policyId\":\"$policy_id\"}" > /dev/null
 order_body() { printf '{"reference":"%s","vendorId":"%s","requesterId":"%s","currency":"BRL","expectedOn":"%s","lines":[{"category":"HARDWARE","item":"LAP-14","quantity":10,"unitPrice":1500.00}]}' "$1" "$(uuid)" "$filed_for" "$(python3 -c "import datetime; print((datetime.date.today() + datetime.timedelta(days=5)).isoformat())")"; }
 placed_order() {

@@ -18,14 +18,14 @@
     (9) a cloud resource the tool has not seen for days opens one alert and one incident (ADR-042), seeing it again resolves it, and a terminated one opens nothing
         (the smoke moves the moment the tool last saw the resource back in the store with docker exec on the MongoDB container, MONGO_CONTAINER, the way two days passing would);
     (10) a placed purchase order past its expected day opens one alert and one incident (ADR-043), receiving it completely or cancelling it resolves the alert (the smoke moves
-        the expected day back in the store, and approves the order on the REAL approval service with the policy in .e2e/procurement-policy.json).
+        the expected day back in the store, and approves the order on the REAL approval service with a purchase-order policy it makes for its own tenant).
 
     pwsh -File .\promises-alerting-smoke.ps1
 #>
 param(
     [string]$GatewayUrl = 'http://localhost:8088',
     [string]$MongoContainer = 'thinklab-mongo-1',
-    [string]$PolicyFile = (Join-Path $PSScriptRoot '..\..\.e2e\procurement-policy.json')
+    [string]$WorkflowApprovalUrl = 'http://localhost:8090'
 )
 
 $ErrorActionPreference = 'Stop'
@@ -202,11 +202,10 @@ Assert-Equal 'a resource the tool said is terminated is GONE' (Invoke-Api GET "$
 Assert-Equal 'a terminated resource opens nothing, however long ago it was seen' @((Invoke-Api GET "$alr/retrieve?checkId=$gone" $staff).Body).Count 0
 
 # 10. A purchase order that is late (ADR-043). An order cannot be drafted with an expected day in the past, so the smoke moves the expected day of a placed order
-# back in the store (docker exec, as for section 9); the approval goes through the REAL approval service with the purchase-order policy.
-if (-not (Test-Path $PolicyFile)) { throw "Missing $PolicyFile - run start-local-stack.ps1 (or provision-change-management.sh) first." }
-$approver = @((Get-Content $PolicyFile -Raw | ConvertFrom-Json).approverIds)[0]
+# back in the store (docker exec, as for section 9); the approval goes through the REAL approval service with a purchase-order policy of this tenant.
+$approver = [guid]::NewGuid().ToString()
 # The approval policy of an order is that of its approval band (procurement ADR-036): this tenant needs a band at 0 before an order can be sent for approval.
-$bandPolicy = (Get-Content $PolicyFile -Raw | ConvertFrom-Json).policyId
+$bandPolicy = (Invoke-Api POST "$WorkflowApprovalUrl/workflow-approval/v1/policy/initiate" $staff @{ name = 'PURCHASE-ORDER'; requiredApprovals = 1; eligibleApproverIds = @($approver) }).Body.id
 [void](Invoke-Api POST "$po/band/initiate" $staff "{`"currency`":`"BRL`",`"fromAmount`":0,`"policyId`":`"$bandPolicy`"}")
 function Order-Body2([string]$Reference) { @{ reference = $Reference; vendorId = [guid]::NewGuid().ToString(); requesterId = $filedFor; currency = 'BRL'; expectedOn = (Get-Date).AddDays(5).ToString('yyyy-MM-dd'); lines = @(@{ category = 'HARDWARE'; item = 'LAP-14'; quantity = 10; unitPrice = 1500.00 }) } }
 function Placed-Order([string]$Reference) {

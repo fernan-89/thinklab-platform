@@ -3,9 +3,8 @@
   Live proof of Journey 15, sixth service: purchase orders through the platform gateway, against the REAL approval service (procurement ADR-030..034).
 
 .DESCRIPTION
-  Needs the stack up and the purchase-order ApprovalPolicy that start-local-stack.ps1 writes to the run directory as procurement-policy.json
-  (provision-change-management.sh writes .e2e/procurement-policy.json in the Docker stack). The smoke makes its own approval bands (procurement ADR-036) with that
-  policy: no band, no submission; the band of an order is the one with the greatest lower bound not above its total.
+  Needs the stack up. The smoke makes its own purchase-order ApprovalPolicy in its own tenant (a policy belongs to a tenant: the lookup at workflow-approval is tenant-scoped)
+  and its own approval bands (procurement ADR-036) with that policy: no band, no submission; the band of an order is the one with the greatest lower bound not above its total.
   Uses its own tenant id, then drives, through the GATEWAY:
     (1) a draft (the total, the lines in minor units), a duplicate reference (409), an update that replaces the lines;
     (2) approval on the REAL approval service: sent for approval, an approver who is not eligible refused (409), an eligible approver approves, a decision on an
@@ -24,12 +23,11 @@
 param(
     [string]$GatewayUrl = 'http://localhost:8088',
     [string]$LedgerUrl = 'http://localhost:8094',
-    [string]$PolicyFile = (Join-Path $PSScriptRoot '..\..\.e2e\procurement-policy.json')
+    [string]$WorkflowApprovalUrl = 'http://localhost:8090'
 )
 
 $ErrorActionPreference = 'Stop'
 $results = New-Object System.Collections.ArrayList
-if (-not (Test-Path $PolicyFile)) { throw "Missing $PolicyFile - run start-local-stack.ps1 (or provision-change-management.sh) first." }
 
 function Invoke-Api {
     param([string]$Method, [string]$Url, [hashtable]$Headers = @{}, $Body = $null)
@@ -55,8 +53,7 @@ function Assert-Equal {
 
 $po = "$GatewayUrl/it-procurement/v1"
 $ledger = "$LedgerUrl/compliance-audit-ledger/v1"
-$policy = Get-Content $PolicyFile -Raw | ConvertFrom-Json
-$approver = @($policy.approverIds)[0]
+$approver = [guid]::NewGuid().ToString()
 $outsider = [guid]::NewGuid().ToString()
 $tenantId = [guid]::NewGuid().ToString()
 $user = [guid]::NewGuid().ToString(); $requester = [guid]::NewGuid().ToString(); $requesterUser = [guid]::NewGuid().ToString(); $vendor = [guid]::NewGuid().ToString()
@@ -64,6 +61,8 @@ $staff = @{ 'X-Tenant-Id' = $tenantId; 'X-Executor' = $user }
 $dock = @{ 'X-Tenant-Id' = $tenantId; 'X-Executor' = 'dock-1' }
 $asRequester = @{ 'X-Tenant-Id' = $tenantId; 'X-Executor' = $requesterUser; 'X-Role' = 'REQUESTER' }
 $otherTenant = @{ 'X-Tenant-Id' = [guid]::NewGuid().ToString(); 'X-Executor' = $user }
+# One approval of this one approver is the quorum.
+$policyId = (Invoke-Api POST "$WorkflowApprovalUrl/workflow-approval/v1/policy/initiate" $staff @{ name = 'PURCHASE-ORDER'; requiredApprovals = 1; eligibleApproverIds = @($approver) }).Body.id
 function Day([int]$Offset) { (Get-Date).ToUniversalTime().Date.AddDays($Offset).ToString('yyyy-MM-dd') }
 
 $defaultLines = '[{"category":"HARDWARE","item":"LAP-14","quantity":10,"unitPrice":1500.00},{"category":"SOFTWARE","item":"OFFICE-E3","quantity":5,"unitPrice":20}]'
@@ -92,7 +91,6 @@ Assert-Equal 'a draft is updated (204): the lines are replaced and the total fol
 Assert-Equal 'the list finds it by status and by vendor, and not by another status' "$(@((Invoke-Api GET "$po/retrieve?status=DRAFT&vendorId=$vendor" $staff).Body)[0].id)/$(Count "$po/retrieve?status=APPROVED")" "$order/0"
 
 # 1b. Approval bands (procurement ADR-036): no band, no submission; the band of an order is the active one with the greatest lower bound not above its total.
-$policyId = $policy.policyId
 $noBand = Invoke-Api PUT "$po/$order/control/submit" $staff
 Assert-Equal 'with no approval band an order cannot be sent for approval: 502 ERR-PRC-00502, and it stays a draft' "$($noBand.Status)/$($noBand.Body.error_code)/$((Get-Order $order).status)" '502/ERR-PRC-00502/DRAFT'
 function Band-Body([string]$Currency, $From) { "{`"currency`":`"$Currency`",`"fromAmount`":$From,`"policyId`":`"$policyId`"}" }
