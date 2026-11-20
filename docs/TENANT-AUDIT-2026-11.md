@@ -17,6 +17,16 @@ Passada estática sobre os 35 serviços `micronaut-*-service`: (1) portas de rep
 
 Padrão: **os serviços das primeiras jornadas (ativos, mudanças, descoberta, manutenção, janelas, sites, catálogo de tipos, topologia, notificações) não filtram por tenant nas rotas por id**; os feitos depois, sim.
 
+## Situação em 2026-11-18
+
+**Grupo A fechado.** Os nove serviços (asset-registry, change-management, discovery, hardware-maintenance, operation-window, site-reference-data-directory, ci-type-catalog, topology-graph, notification-dispatch) exigem `X-Tenant-Id` em toda rota por id; o objeto de outro tenant é um 404; o repositório não tem mais `findById` sem organização. Cada um tem ADR, teste de outro tenant, pasta de isolamento no Postman e 100% de cobertura.
+
+**Prova:** o probe `scripts/e2e/tenant-probe.sh` roda no e2e e mostra os nove como `ok` (`own=200`, `retrieve=404`, `audit-log/retrieve=404` onde há). A lista `LEAKY` está vazia: um vazamento novo em qualquer um deles reprova o job.
+
+**O que o fechamento exigiu além dos serviços:** os smokes (`.sh` e `.ps1`) e o `seed-demo.ps1` passaram a mandar o tenant nas chamadas por id; a suite Postman do asset-registry, que ativa um tipo no ci-type-catalog, também.
+
+**Aberto:** grupos B e C (decisão caso a caso) e a política CAB/ECAB por tenant do change-management (ACTION-PLAN 0.8-d). O `seed-demo.ps1` ainda chama o subscription-billing por id sem tenant (grupo B).
+
 ## Como fechar (proposta, a decidir)
 
 1. **Prova primeiro:** um script de sondagem que, para cada serviço do grupo A, cria um objeto como o tenant X e tenta ler, alterar e cancelar como o tenant Y pelo gateway. Resultado esperado hoje: 200 onde deveria ser 404. Dá a lista exata e vira o teste de regressão.
