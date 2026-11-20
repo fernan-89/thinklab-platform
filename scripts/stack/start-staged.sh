@@ -15,7 +15,7 @@ set -uo pipefail
 source "$(dirname "${BASH_SOURCE[0]}")/services.sh"
 cd "$PLATFORM_DIR"
 
-: "${COMPOSE_PROFILES:=sso-test,ticketing-test,health-test,plan-gating}"
+: "${COMPOSE_PROFILES:=sso-test,ticketing-test,health-test,plan-gating,approval-per-tenant}"
 export COMPOSE_PROFILES
 batch_size="${START_BATCH_SIZE:-6}"
 batch_timeout="${START_BATCH_TIMEOUT:-150}"
