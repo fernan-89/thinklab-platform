@@ -188,8 +188,6 @@ services:
     environment:
       <<: *service-env
       MONGODB_URI: mongodb://mongo:27017/thinklab_workflow_approval_db?replicaSet=thinklab-rs0
-      # ADR-036/037: a policy is found only in the tenant that files the request. Change management no longer shares one CAB/ECAB across tenants (ADR-039 there).
-      THINKLAB_APPROVAL_POLICY_TENANT_SCOPED: ${THINKLAB_APPROVAL_POLICY_TENANT_SCOPED:-true}
 
   # CAB and ECAB belong to the tenant (ADR-039 of that service): set them with PUT /it-change-management/v1/approval-settings/update before routing a NORMAL or EMERGENCY change;
   # STANDARD changes (pre-approved) need neither.
@@ -203,9 +201,6 @@ services:
       MONGODB_URI: mongodb://mongo:27017/thinklab_it_change_management_db?replicaSet=thinklab-rs0
       WORKFLOW_APPROVAL_SERVICE_URL: http://workflow-approval:8080
       OPERATION_WINDOW_SERVICE_URL: http://it-operation-window:8080
-      # ADR-039 of change-management: each tenant has its own CAB and ECAB (PUT /approval-settings/update); a tenant without them is refused (422), never given another's.
-      # Set to false only to go back to the shared THINKLAB_CAB_POLICY_ID/THINKLAB_ECAB_POLICY_ID pair (not provisioned by this stack any more).
-      THINKLAB_CHANGE_APPROVAL_POLICY_PER_TENANT: ${THINKLAB_CHANGE_APPROVAL_POLICY_PER_TENANT:-true}
 
   # Journey 10 (no events, ADR-032 of it-discovery): promotion calls it-asset-registry synchronously, and
   # it-asset-registry validates Asset.specifications against ci-type-catalog (fail-open, ADR-027).
