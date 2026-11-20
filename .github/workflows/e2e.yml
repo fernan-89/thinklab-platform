@@ -161,7 +161,7 @@ jobs:
         timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/change-management-smoke.sh
 
-      - name: Approval per tenant smoke (ADR-039 of change-management: the CAB and ECAB belong to the tenant, a tenant without them is refused)
+      - name: Approval per tenant smoke (ADR-039 of change-management, the CAB and ECAB belong to the tenant, a tenant without them is refused)
         timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/approval-per-tenant-smoke.sh
 
