@@ -70,7 +70,7 @@ jobs:
         # Same limit as the start below: building about forty images at once made BuildKit drop the connection (run 43029998968: "failed to receive status: rpc error: code = Unavailable ... EOF").
         env:
           COMPOSE_PARALLEL_LIMIT: "4"
-        run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating build
+        run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating --profile approval-per-tenant build
 
       # The ubuntu-22.04 image runs a mono service that listens on 0.0.0.0:8084, the port the platform publishes for it-operation-window: the first group of
       # services failed with "failed to bind host port for 0.0.0.0:8084 ... address already in use" (run 43026570593; runner-diagnostics lists it on a fresh runner).
@@ -160,6 +160,10 @@ jobs:
       - name: Change management smoke (CAB/ECAB quorum, veto, scheduling collision)
         timeout-minutes: 15
         run: thinklab-platform/scripts/e2e/change-management-smoke.sh
+
+      - name: Approval per tenant smoke (ADR-039 of change-management, the CAB and ECAB belong to the tenant, a tenant without them is refused)
+        timeout-minutes: 15
+        run: thinklab-platform/scripts/e2e/approval-per-tenant-smoke.sh
 
       - name: Discovery + topology smoke (promotion -> Asset, schema 422, blast radius)
         timeout-minutes: 15

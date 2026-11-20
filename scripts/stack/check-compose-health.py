@@ -15,7 +15,7 @@ import json
 import subprocess
 import sys
 
-PROFILES = ["sso-test", "ticketing-test", "health-test", "plan-gating", "web"]
+PROFILES = ["sso-test", "ticketing-test", "health-test", "plan-gating", "approval-per-tenant", "web"]
 EXEMPT = {"tools": "one-shot: copies the busybox into the tools volume and exits with 0"}
 
 
