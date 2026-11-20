@@ -1,20 +1,11 @@
 #!/usr/bin/env bash
-# Provisions real CAB/ECAB ApprovalPolicy records against a running workflow-approval-service, for
-# it-change-management (GMUD): thinklab.change-management.cab-policy-id/ecab-policy-id have no runtime
-# API and must be set at JVM boot (that service's ADR-031), so under docker-compose this can only work
-# in two phases - start the stack once with it-change-management blank (STANDARD changes still work,
-# since they're pre-approved), provision the policies here now that workflow-approval is up, then
-# `docker compose up -d it-change-management` again to recreate just that one container with the real
-# ids (compose detects the changed environment and restarts it - nothing else is touched).
+# Provisions the purchase-order ApprovalPolicy of it-procurement against a running workflow-approval-service (one approval, two eligible approvers) and writes
+# .e2e/procurement-policy.json for the smokes that send purchase orders for approval. it-procurement needs no restart: the policy of an order is that of its approval
+# band (procurement ADR-036), and each smoke makes a band at 0 for its own tenant with this policy.
 #
-# It also provisions the purchase-order policy of it-procurement (one approval, two eligible approvers) and writes .e2e/procurement-policy.json for the smokes that
-# send purchase orders for approval. it-procurement needs no restart: the policy of an order is that of its approval band (procurement ADR-036), and each smoke makes
-# a band at 0 for its own tenant with this policy.
-#
-# Writes thinklab-platform/.e2e/change-management-policies.json (same schema start-local-stack.ps1's own
-# provisioning step writes, so change-management-smoke.sh can read it the same way its PowerShell
-# counterpart does) and prints THINKLAB_CAB_POLICY_ID=... / THINKLAB_ECAB_POLICY_ID=... lines, meant to
-# be appended straight into $GITHUB_ENV (or sourced locally: `source <(./provision-change-management.sh)`).
+# The file is still called provision-change-management for the scripts that call it. It no longer provisions a CAB and ECAB: since ADR-039 of it-change-management
+# they belong to each tenant (PUT /it-change-management/v1/approval-settings/update), so the smokes that route changes make their own and there is no shared pair
+# to put in the environment and no second boot of change-management.
 set -euo pipefail
 source "$(dirname "$0")/services.sh"
 workflow_approval_url="${1:-http://localhost:8090}/workflow-approval/v1"
@@ -25,43 +16,18 @@ uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
 json() { python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
 
 tenant=$(uuid)
-cab_approvers=("$(uuid)" "$(uuid)" "$(uuid)")
-ecab_approvers=("$(uuid)" "$(uuid)")
-
-create_policy() {
-  local name=$1 required=$2; shift 2
-  local approvers=("$@")
-  local ids_json
-  ids_json=$(printf '"%s",' "${approvers[@]}"); ids_json="[${ids_json%,}]"
-  curl -sS -X POST "$workflow_approval_url/policy/initiate" \
-    -H "X-Tenant-Id: $tenant" -H 'Content-Type: application/json' \
-    -d "{\"name\":\"$name\",\"requiredApprovals\":$required,\"eligibleApproverIds\":$ids_json}"
-}
-
 po_approvers=("$(uuid)" "$(uuid)")
 
-cab_response=$(create_policy CAB 2 "${cab_approvers[@]}")
-ecab_response=$(create_policy ECAB 1 "${ecab_approvers[@]}")
-cab_id=$(echo "$cab_response" | json "['id']")
-ecab_id=$(echo "$ecab_response" | json "['id']")
-# The approval policy of the procurement service (purchase orders): one approval of two eligible approvers, on the same tenant (policies belong to a tenant).
-po_response=$(create_policy PURCHASE-ORDER 1 "${po_approvers[@]}")
+ids_json=$(printf '"%s",' "${po_approvers[@]}"); ids_json="[${ids_json%,}]"
+# one approval of two eligible approvers, on the same tenant (policies belong to a tenant)
+po_response=$(curl -sS -X POST "$workflow_approval_url/policy/initiate" \
+  -H "X-Tenant-Id: $tenant" -H 'Content-Type: application/json' \
+  -d "{\"name\":\"PURCHASE-ORDER\",\"requiredApprovals\":1,\"eligibleApproverIds\":$ids_json}")
 po_id=$(echo "$po_response" | json "['id']")
-
-python3 -c "
-import json, sys
-json.dump({
-    'cabPolicyId': sys.argv[1], 'cabApproverIds': sys.argv[2].split(','),
-    'ecabPolicyId': sys.argv[3], 'ecabApproverIds': sys.argv[4].split(','),
-}, open(sys.argv[5], 'w'))
-" "$cab_id" "$(IFS=,; echo "${cab_approvers[*]}")" "$ecab_id" "$(IFS=,; echo "${ecab_approvers[*]}")" \
-  "$out_dir/change-management-policies.json"
 
 python3 -c "
 import json, sys
 json.dump({'tenantId': sys.argv[1], 'policyId': sys.argv[2], 'approverIds': sys.argv[3].split(',')}, open(sys.argv[4], 'w'))
 " "$tenant" "$po_id" "$(IFS=,; echo "${po_approvers[*]}")" "$out_dir/procurement-policy.json"
 
-echo "CAB policy [$cab_id] ECAB policy [$ecab_id] purchase-order policy [$po_id]" >&2
-echo "THINKLAB_CAB_POLICY_ID=$cab_id"
-echo "THINKLAB_ECAB_POLICY_ID=$ecab_id"
+echo "purchase-order policy [$po_id]" >&2
