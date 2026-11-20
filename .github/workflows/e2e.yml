@@ -117,13 +117,6 @@ jobs:
         timeout-minutes: 6
         run: thinklab-platform/scripts/stack/wait-ready.sh 240
 
-      # The CAB and ECAB belong to the tenant (ADR-039 of it-change-management): change-management-smoke and approval-per-tenant-smoke make their own policies and
-      # set them with approval-settings/update, so there is nothing to provision for it and no second boot. What is still provisioned here is the purchase-order
-      # policy the procurement smokes use (its tenant is written to .e2e/procurement-policy.json).
-      - name: Provision the purchase-order policy the procurement smokes use
-        timeout-minutes: 3
-        run: thinklab-platform/scripts/stack/provision-change-management.sh
-
       # Docker's own verdict, not only a port that answers: every Java service, the gateways and the test doubles have a healthcheck (docker-compose.yml) and must report healthy.
       - name: Every container reports healthy
         timeout-minutes: 4
