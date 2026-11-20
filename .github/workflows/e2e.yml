@@ -70,7 +70,7 @@ jobs:
         # Same limit as the start below: building about forty images at once made BuildKit drop the connection (run 43029998968: "failed to receive status: rpc error: code = Unavailable ... EOF").
         env:
           COMPOSE_PARALLEL_LIMIT: "4"
-        run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating --profile approval-per-tenant build
+        run: docker compose --profile sso-test --profile ticketing-test --profile health-test --profile plan-gating build
 
       # The ubuntu-22.04 image runs a mono service that listens on 0.0.0.0:8084, the port the platform publishes for it-operation-window: the first group of
       # services failed with "failed to bind host port for 0.0.0.0:8084 ... address already in use" (run 43026570593; runner-diagnostics lists it on a fresh runner).
@@ -117,24 +117,12 @@ jobs:
         timeout-minutes: 6
         run: thinklab-platform/scripts/stack/wait-ready.sh 240
 
-      # it-change-management (GMUD) needs a real CAB/ECAB ApprovalPolicy id at JVM startup
-      # (thinklab.change-management.cab-policy-id/ecab-policy-id, ADR-031 of that service) - there is no
-      # runtime API to set these after boot. It already started above with both blank (STANDARD changes,
-      # pre-approved, still work fine) - now that workflow-approval is up, provision the real policies
-      # against it and recreate just the it-change-management container with their ids: compose detects
-      # the changed environment and restarts only that one service, nothing else is touched.
-      - name: Provision CAB/ECAB policies for it-change-management and the purchase-order policy the procurement smokes use
+      # The CAB and ECAB belong to the tenant (ADR-039 of it-change-management): change-management-smoke and approval-per-tenant-smoke make their own policies and
+      # set them with approval-settings/update, so there is nothing to provision for it and no second boot. What is still provisioned here is the purchase-order
+      # policy the procurement smokes use (its tenant is written to .e2e/procurement-policy.json).
+      - name: Provision the purchase-order policy the procurement smokes use
         timeout-minutes: 3
-        run: thinklab-platform/scripts/stack/provision-change-management.sh >> "$GITHUB_ENV"
-
-      - name: Restart it-change-management with its policy ids
-        timeout-minutes: 3
-        working-directory: thinklab-platform
-        run: timeout -k 10 150 docker compose up -d it-change-management
-
-      - name: Wait until they are ready again
-        timeout-minutes: 4
-        run: thinklab-platform/scripts/stack/wait-ready.sh 120
+        run: thinklab-platform/scripts/stack/provision-change-management.sh
 
       # Docker's own verdict, not only a port that answers: every Java service, the gateways and the test doubles have a healthcheck (docker-compose.yml) and must report healthy.
       - name: Every container reports healthy
