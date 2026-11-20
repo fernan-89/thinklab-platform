@@ -12,8 +12,8 @@
 set -uo pipefail
 
 # Empty: all nine services of group A are fixed and merged (2026-11-18). Any leak from now on is a regression and fails the job.
-# Group B of the audit (ACTION-PLAN 0.8-c): the organisation directory and the users, fixed in their own PRs; remove each name when its service is merged.
-LEAKY=(party-reference-data-directory party-authentication)
+# Empty: the organisation directory and the users (group B) are fixed and merged too (2026-11-20). Any leak from now on is a regression and fails the job.
+LEAKY=()
 
 host="${PROBE_HOST:-http://localhost}"
 org_api="$host:8081/party-reference-data-directory/v1"
