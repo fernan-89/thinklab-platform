@@ -6,17 +6,16 @@
 # order with goods received cannot be cancelled, a rejection is final, fixed lists and identifiers (nothing a tool says is repeated), staff only, the tenant, and
 # every mutation on the ledger.
 #
-# Needs the purchase-order ApprovalPolicy provision-change-management.sh writes to thinklab-platform/.e2e/procurement-policy.json. The smoke makes its own approval
+# The smoke makes its own purchase-order ApprovalPolicy in its own tenant (a policy belongs to a tenant, ADR-036 of workflow-approval: the lookup is tenant-scoped) and its own approval
 # bands (procurement ADR-036) with that policy: no band, no submission; the band of an order is the one with the greatest lower bound not above its total.
 set -uo pipefail
 gateway="${GATEWAY_URL:-http://localhost:8088}"
 po="$gateway/it-procurement/v1"
 ledger_api="${LEDGER_URL:-http://localhost:8094}/compliance-audit-ledger/v1"
-policy_file="${POLICY_FILE:-$(dirname "$0")/../../.e2e/procurement-policy.json}"
+approval_api="${WORKFLOW_APPROVAL_URL:-http://localhost:8090}/workflow-approval/v1"
 checks=0
 failed=0
 tmp=$(mktemp -d); trap 'rm -rf "$tmp"' EXIT
-[[ -f "$policy_file" ]] || { echo "Missing $policy_file - run provision-change-management.sh first." >&2; exit 1; }
 
 json() { python3 -c "import json,sys; print(json.load(sys.stdin)$1)"; }
 uuid() { python3 -c 'import uuid; print(uuid.uuid4())'; }
@@ -42,13 +41,15 @@ check_equal() {
   if [[ "$actual" == "$expected" ]]; then echo "PASS  $name"; else failed=$((failed + 1)); echo "FAIL  $name -> expected [$expected], got [$actual]"; fi
 }
 
-approver=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['approverIds'][0])" "$policy_file")
+approver=$(uuid)
 outsider=$(uuid)
 tenant_id=$(uuid); user=$(uuid); requester=$(uuid); requester_user=$(uuid); vendor=$(uuid)
 tenant="X-Tenant-Id: $tenant_id"
 staff=("$tenant" "X-Executor: $user")
 dock=("$tenant" 'X-Executor: dock-1')
 other_tenant=("X-Tenant-Id: $(uuid)" "X-Executor: $user")
+# One approval of this one approver is the quorum.
+policy_id=$(api_body "$(api POST "$approval_api/policy/initiate" "{\"name\":\"PURCHASE-ORDER\",\"requiredApprovals\":1,\"eligibleApproverIds\":[\"$approver\"]}" "$tenant")" | json "['id']")
 
 st() { api_status "$(api "$1" "$2" "${3:-}" "${staff[@]}")"; }
 stb() { api_body "$(api "$1" "$2" "${3:-}" "${staff[@]}")"; }
@@ -80,7 +81,6 @@ check_equal 'a draft is updated (204): the lines are replaced and the total foll
 check_equal 'the list finds it by status and by vendor, and not by another status' "$order/0" "$(stb GET "$po/retrieve?status=DRAFT&vendorId=$vendor" | json "[0]['id']")/$(stb GET "$po/retrieve?status=APPROVED" | count)"
 
 # 1b. Approval bands (procurement ADR-036): no band, no submission; the band of an order is the active one with the greatest lower bound not above its total.
-policy_id=$(python3 -c "import json,sys; print(json.load(open(sys.argv[1]))['policyId'])" "$policy_file")
 no_band=$(api PUT "$po/$order/control/submit" "" "${staff[@]}")
 check_equal 'with no approval band an order cannot be sent for approval: 502 ERR-PRC-00502, and it stays a draft' '502/ERR-PRC-00502/DRAFT' \
   "$(api_status "$no_band")/$(api_body "$no_band" | json "['error_code']")/$(field "$order" status)"
