@@ -12,10 +12,12 @@
 set -uo pipefail
 
 # Empty: all nine services of group A are fixed and merged (2026-11-18). Any leak from now on is a regression and fails the job.
+# Empty: the organisation directory and the users (group B) are fixed and merged too (2026-11-20). Any leak from now on is a regression and fails the job.
 LEAKY=()
 
 host="${PROBE_HOST:-http://localhost}"
 org_api="$host:8081/party-reference-data-directory/v1"
+auth_api="$host:8082/party-authentication/v1"
 asset_api="$host:8083/it-asset-registry/v1"
 window_api="$host:8084/it-operation-window/v1"
 work_api="$host:8085/it-hardware-maintenance/v1"
@@ -66,13 +68,18 @@ add operation-window "$(post "$window_api/initiate" "{\"title\":\"Probe window\"
 add site-directory "$(post "$site_api/initiate" "{\"organisationId\":\"$tenant_x\",\"siteName\":\"Probe site $(uuid | cut -c1-6)\",\"address\":\"1 Main St\",\"city\":\"Lisbon\",\"country\":\"PT\",\"zipCode\":\"1000-001\",\"timezone\":\"Europe/Lisbon\",\"latitude\":38.72,\"longitude\":-9.14}" "$tenant_x")" "$site_api" "retrieve audit-log/retrieve"
 add ci-type-catalog "$(post "$catalog_api/initiate" "{\"category\":\"SERVER\",\"jsonSchema\":\"{\\\"type\\\":\\\"object\\\"}\"}" "$tenant_x")" "$catalog_api" "retrieve audit-log/retrieve"
 add topology-graph "$(post "$topology_api/initiate" "{\"nodeType\":\"ASSET\",\"externalId\":\"$(uuid)\",\"label\":\"probe\",\"attributes\":{\"tier\":\"web\"}}" "$tenant_x")" "$topology_api" "retrieve"
+# Group B: the organisation is the tenant (tenant Y must not read, or list, the organisation of tenant X) and a user belongs to a tenant.
+org_listed=$(curl -sS -H "$executor" -H "X-Tenant-Id: $tenant_y" "$org_api/retrieve")
+org_list_leak=0; [[ "$org_listed" == *"$tenant_x"* ]] && org_list_leak=1
+add party-reference-data-directory "$tenant_x" "$org_api" "retrieve organisation-unit/retrieve contact/retrieve"
+add party-authentication "$(post "$auth_api/initiate" "{\"fullName\":\"Probe User\",\"email\":\"probe-$(uuid | cut -c1-8)@probe.example\",\"role\":\"VIEWER\"}" "$tenant_x")" "$auth_api" "retrieve"
 add notification-dispatch "$(post "$notify_api/initiate" "{\"recipient\":\"probe@thinklab.com\",\"subject\":\"Probe\",\"body\":\"probe\",\"channel\":\"LOG\"}" "$tenant_x")" "$notify_api" "retrieve"
 
 is_leaky() { local s; for s in ${LEAKY[@]+"${LEAKY[@]}"}; do [[ "$s" == "$1" ]] && return 0; done; return 1; }
 
 failed=0
 printf '%-22s %-8s %s\n' service verdict "answers of tenant Y to what tenant X made"
-for svc in asset-registry change-management discovery hardware-maintenance operation-window site-directory ci-type-catalog topology-graph notification-dispatch; do
+for svc in asset-registry change-management discovery hardware-maintenance operation-window site-directory ci-type-catalog topology-graph notification-dispatch party-reference-data-directory party-authentication; do
   id=${created[$svc]}
   if [[ -z "$id" ]]; then printf '%-22s %-8s %s\n' "$svc" NOCREATE "could not create the object as tenant X (see the line above)"; failed=$((failed + 1)); continue; fi
   own=$(status_of "${base[$svc]}/$id/retrieve" "$tenant_x")
@@ -82,6 +89,7 @@ for svc in asset-registry change-management discovery hardware-maintenance opera
     answers="$answers $path=$code"
     [[ "$code" == 200 ]] && leaked=1
   done
+  if [[ "$svc" == party-reference-data-directory && $org_list_leak == 1 ]]; then answers="$answers list=LISTED"; leaked=1; fi
   if [[ "$own" != 200 ]]; then verdict=BADSETUP; failed=$((failed + 1))
   elif [[ $leaked == 1 ]]; then
     if is_leaky "$svc"; then verdict=leak-known; else verdict=LEAK-NEW; failed=$((failed + 1)); fi

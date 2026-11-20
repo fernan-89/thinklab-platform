@@ -25,7 +25,22 @@ Padrão: **os serviços das primeiras jornadas (ativos, mudanças, descoberta, m
 
 **O que o fechamento exigiu além dos serviços:** os smokes (`.sh` e `.ps1`) e o `seed-demo.ps1` passaram a mandar o tenant nas chamadas por id; a suite Postman do asset-registry, que ativa um tipo no ci-type-catalog, também.
 
-**Aberto:** grupos B e C (decisão caso a caso) e a política CAB/ECAB por tenant do change-management (ACTION-PLAN 0.8-d). O `seed-demo.ps1` ainda chama o subscription-billing por id sem tenant (grupo B).
+### Grupos B e C, lidos caso a caso (2026-11-20)
+
+Lidos os casos de uso e as rotas dos dez serviços; a varredura de texto do relatório original errou em parte (marcou portas que já eram com escopo). Decisões do dono do produto e o que ficou:
+
+| Serviço | Leitura | Decisão |
+|---|---|---|
+| **party-reference-data-directory** | A organização é o tenant. Qualquer tenant lia, editava, suspendia e cancelava outra organização pelo UUID, via unidades e contatos, e **listava todas** (`GET /retrieve`). **Vazamento real.** | Só a própria organização: o `X-Tenant-Id` precisa ser o `{id}`; a lista devolve só a do chamador; `initiate` continua sem tenant. Sem papel de plataforma por ora. PR party-reference-data-directory#9 (ADR-016). |
+| **party-authentication** | Usuários têm organização; 5 rotas por id (retrieve, update, activate, suspend, deactivate) só recebiam o id. **Vazamento real.** Credencial e revogação de sessão já comparavam o tenant depois de carregar. | Escopar tudo: uma busca `findById(id, organisationId)`, usada também pela sessão federada e pelo refresh (a organização vem do registro do refresh token). PR party-authentication#9 (ADR-023). |
+| compliance-audit-ledger, consumable-inventory, identity-federation, subscription-billing (só assinaturas) | Já isolavam (carregam pelo id e comparam a organização no caso de uso), mas a porta ainda tinha `findById(id)` sem organização. | Apertar a porta, sem mudança de comportamento. PRs ledger#4, consumable#4, federation#4, billing#4. |
+| service-request, external-ticketing, health-monitoring | Falso positivo da varredura: as portas já são `findById(id, organisationId)`. | Nada a fazer; contam como grupo D. |
+| hash-token-registry | Ids soberanos e hashes sem `organisationId` no modelo: global por desenho. | Aceito, sem mudança. |
+| subscription-billing (planos) | O catálogo de planos é compartilhado por todos os tenants. | Aceito, sem mudança. |
+
+O probe ganhou duas linhas (organização e usuário); começam em `LEAKY` e saem quando os PRs entram.
+
+**Aberto:** a política CAB/ECAB por tenant do change-management (ACTION-PLAN 0.8-d). O `seed-demo.ps1` ainda chama o subscription-billing (planos, globais) sem tenant, o que é coerente com a decisão acima.
 
 ## Como fechar (proposta, a decidir)
 
